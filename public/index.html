@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>今彩539 智能分析系統</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ════ Animated background ════ -->
+<div class="bg-layer" aria-hidden="true">
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+  <canvas id="particleCanvas"></canvas>
+</div>
+
+<!-- ════ Top nav ════ -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <span class="brand-icon">🎯</span>
+    <span class="brand-text">今彩539<span class="brand-sub"> 智能分析系統</span></span>
+  </div>
+  <div class="nav-center">
+    <button class="nav-tab active" data-section="dashboard">儀表板</button>
+    <button class="nav-tab" data-section="analysis">號碼分析</button>
+    <button class="nav-tab" data-section="predict">智能預測</button>
+    <button class="nav-tab" data-section="history">歷史記錄</button>
+  </div>
+  <div class="nav-right">
+    <div class="update-badge" id="updateBadge">
+      <span class="badge-dot"></span>
+      <span id="updateText">載入中...</span>
+    </div>
+    <button class="refresh-btn" id="refreshBtn" title="重新載入最新資料">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <polyline points="1 20 1 14 7 14"></polyline>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+      </svg>
+    </button>
+  </div>
+</nav>
+
+<!-- ════ SECTION: Dashboard ════ -->
+<main id="sec-dashboard" class="section active">
+
+  <!-- ── Hero row ── -->
+  <div class="hero-row">
+
+    <!-- Latest draw -->
+    <div class="card hero-card latest-card">
+      <div class="card-header">
+        <div>
+          <div class="card-label">最新開獎結果</div>
+          <div class="card-sub" id="latestMeta">─</div>
+        </div>
+        <div class="live-dot"><span></span>LIVE</div>
+      </div>
+      <div class="balls-row" id="latestBalls">
+        <div class="ball-skeleton"></div>
+        <div class="ball-skeleton"></div>
+        <div class="ball-skeleton"></div>
+        <div class="ball-skeleton"></div>
+        <div class="ball-skeleton"></div>
+      </div>
+      <div class="draw-sum" id="latestSum">總和: ─</div>
+    </div>
+
+    <!-- Prediction card -->
+    <div class="card hero-card predict-card">
+      <div class="card-header">
+        <div>
+          <div class="card-label">AI 智能預測</div>
+          <div class="card-sub">機器學習推薦號碼</div>
+        </div>
+        <div class="confidence-badge" id="confBadge">─%</div>
+      </div>
+      <div class="balls-row" id="predictBalls">
+        <div class="ball-skeleton pred"></div>
+        <div class="ball-skeleton pred"></div>
+        <div class="ball-skeleton pred"></div>
+        <div class="ball-skeleton pred"></div>
+        <div class="ball-skeleton pred"></div>
+      </div>
+      <div class="pred-footer">
+        <span id="predMethod">綜合頻率 · 遺漏值 · 近期趨勢分析</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── KPI cards ── -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon">📊</div>
+      <div class="kpi-value" id="kpiTotal">─</div>
+      <div class="kpi-label">歷史總期數</div>
+    </div>
+    <div class="kpi-card hot">
+      <div class="kpi-icon">🔥</div>
+      <div class="kpi-value" id="kpiHot">─</div>
+      <div class="kpi-label">最熱號碼</div>
+    </div>
+    <div class="kpi-card cold">
+      <div class="kpi-icon">❄️</div>
+      <div class="kpi-value" id="kpiCold">─</div>
+      <div class="kpi-label">最冷號碼</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon">📅</div>
+      <div class="kpi-value" id="kpiDate">─</div>
+      <div class="kpi-label">資料起始年份</div>
+    </div>
+  </div>
+
+  <!-- ── Dual chart row ── -->
+  <div class="chart-row">
+    <div class="card chart-card">
+      <div class="card-title">號碼出現頻率分析</div>
+      <div class="chart-wrap">
+        <canvas id="freqChart"></canvas>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <div class="card-title">近期遺漏值 (距上次出現期數)</div>
+      <div class="chart-wrap">
+        <canvas id="gapChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Hot / Cold row ── -->
+  <div class="chart-row">
+    <div class="card">
+      <div class="card-title">🔥 近100期熱門號碼 Top 10</div>
+      <div class="num-pills" id="hotNums"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">❄️ 近100期冷門號碼 Bottom 10</div>
+      <div class="num-pills" id="coldNums"></div>
+    </div>
+  </div>
+
+  <!-- ── Heatmap ── -->
+  <div class="card">
+    <div class="card-title">號碼熱力圖 <span class="card-sub">(顏色越深出現越頻繁)</span></div>
+    <div class="heatmap" id="heatmap"></div>
+    <div class="heatmap-legend">
+      <span class="legend-label">冷門</span>
+      <div class="legend-bar"></div>
+      <span class="legend-label">熱門</span>
+    </div>
+  </div>
+
+</main>
+
+<!-- ════ SECTION: Analysis ════ -->
+<main id="sec-analysis" class="section">
+
+  <div class="card">
+    <div class="card-title">全區間號碼頻率排行</div>
+    <div class="chart-wrap tall">
+      <canvas id="freqAllChart"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="card chart-card">
+      <div class="card-title">奇偶比例分析</div>
+      <div class="chart-wrap small">
+        <canvas id="oddEvenChart"></canvas>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <div class="card-title">號碼段分佈 (1–13 / 14–26 / 27–39)</div>
+      <div class="chart-wrap small">
+        <canvas id="rangeChart"></canvas>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <div class="card-title">組合總和分佈</div>
+      <div class="chart-wrap small">
+        <canvas id="sumChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">號碼詳細統計表</div>
+    <div class="table-wrap">
+      <table class="stats-table" id="statsTable">
+        <thead>
+          <tr>
+            <th>號碼</th>
+            <th>出現次數</th>
+            <th>出現率 %</th>
+            <th>近100期出現</th>
+            <th>距上次出現 (期)</th>
+            <th>熱度</th>
+          </tr>
+        </thead>
+        <tbody id="statsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- ════ SECTION: Predict ════ -->
+<main id="sec-predict" class="section">
+
+  <div class="predict-hero">
+    <div class="ai-logo">AI</div>
+    <h1 class="predict-title">智能預測引擎</h1>
+    <p class="predict-desc">綜合歷史頻率、近期趨勢、遺漏值多維度分析，為您推薦最優組合</p>
+  </div>
+
+  <div class="predict-main-card card">
+    <div class="card-title">本期推薦號碼</div>
+    <div class="predict-balls-lg" id="predictBallsLg"></div>
+    <div class="predict-conf-row">
+      <div class="conf-label">綜合信心指數</div>
+      <div class="conf-bar-wrap">
+        <div class="conf-bar" id="confBar"></div>
+      </div>
+      <div class="conf-val" id="confVal">─%</div>
+    </div>
+  </div>
+
+  <div class="predict-detail-grid" id="predictDetail"></div>
+
+  <div class="card">
+    <div class="card-title">多組推薦組合</div>
+    <div class="multi-pred" id="multiPred"></div>
+    <button class="btn-regen" id="regenBtn">🔄 重新生成推薦組合</button>
+  </div>
+
+  <div class="card disclaimer">
+    <div class="card-title">⚠️ 重要聲明</div>
+    <p>彩券開獎為隨機事件，本系統分析結果僅供參考娛樂，不代表實際開獎結果。</p>
+    <p>任何預測方法均無法保證準確率。請理性購買，量力而為。</p>
+  </div>
+
+</main>
+
+<!-- ════ SECTION: History ════ -->
+<main id="sec-history" class="section">
+
+  <div class="card">
+    <div class="history-toolbar">
+      <div class="card-title" style="margin:0">歷史開獎記錄</div>
+      <div class="toolbar-right">
+        <input class="search-input" id="searchInput" type="text" placeholder="搜尋期別 / 日期 / 號碼…">
+        <span class="total-badge" id="totalBadge">共 0 期</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>期別</th>
+            <th>開獎日期</th>
+            <th>開獎號碼</th>
+            <th>總和</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+</main>
+
+<!-- ════ Loading overlay ════ -->
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="loading-box">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">正在載入歷史資料…</div>
+    <div class="loading-sub" id="loadingSub">首次啟動需抓取完整歷史，請稍候</div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
