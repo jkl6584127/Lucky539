@@ -156,6 +156,13 @@ async function updateData(force = false) {
   if (!force && !stale && !empty) return cache.draws;
   if (updating)                   return cache.draws;
 
+  // If we have cached data but it's stale, return it immediately and update in background
+  if (!empty && stale && !force) {
+    updating = true;
+    updateInBackground(cache, now).catch(console.error);
+    return cache.draws;
+  }
+
   updating = true;
   progress = { done: 0, total: 0 };
 
@@ -239,6 +246,52 @@ async function updateData(force = false) {
   }
 
   return cache.draws;
+}
+
+async function updateInBackground(cache, now) {
+  progress = { done: 0, total: 0 };
+  try {
+    console.log(`[bg] Background incremental update…`);
+    const maxIndex = await fetchMaxIndex();
+    if (!maxIndex) throw new Error('Could not get max index');
+
+    if (maxIndex - 1 > cache.latestDex) {
+      const newItems = [];
+      let index  = maxIndex;
+      let errors = 0;
+
+      while (index > cache.latestDex) {
+        const batch = await fetchBatch(index);
+        if (batch === null) { if (++errors >= 3) break; continue; }
+        if (batch.length === 0) break;
+
+        for (const item of batch) {
+          if (parseInt(item.dex) > cache.latestDex) newItems.push(item);
+        }
+        index = parseInt(batch[batch.length - 1].dex);
+        await delay(100);
+      }
+
+      if (newItems.length > 0) {
+        const combined  = [...newItems.map(toRecord), ...cache.draws];
+        cache.draws     = assignOfficialPeriods(combined);
+        cache.latestDex = maxIndex - 1;
+        console.log(`[bg] +${newItems.length} new draws (total: ${cache.draws.length})`);
+      }
+    }
+
+    cache.lastUpdated = now;
+    saveCache(cache);
+    console.log(`[bg] Update done.`);
+  } catch (e) {
+    console.error('[bg]', e.message);
+    // Still mark as updated to avoid retry loop
+    cache.lastUpdated = now;
+    saveCache(cache);
+  } finally {
+    updating = false;
+    progress = { done: cache.draws.length, total: cache.draws.length };
+  }
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
