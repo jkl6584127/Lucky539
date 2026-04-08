@@ -13,7 +13,7 @@ const CACHE_TTL        = 30 * 60 * 1000; // 30 minutes
 // ─── Generic pilio lottery config ────────────────────────
 // 大樂透(lto) 和 六合彩(ltohk) 共用同一套 pilio 抓取邏輯
 const PILIO_CFGS = {
-  lotto: { kind: 'lto',   maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryLotto.json') },
+  lotto: { kind: 'ltobig', maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryLotto.json') },
   mark6: { kind: 'ltohk', maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryMark6.json') },
 };
 const pilioState = {
