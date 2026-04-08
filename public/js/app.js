@@ -14,8 +14,10 @@ let histFilter  = '';
 const PAGE_SIZE = 30;
 
 const LOTTERY_META = {
-  '539':   { name: '今彩539', icon: '🎯', brand: '今彩539<span class="brand-sub"> 智能分析系統</span>' },
-  'calif': { name: '加州天天樂', icon: '🌴', brand: '加州天天樂<span class="brand-sub"> 智能分析系統</span>' }
+  '539':   { name: '今彩539',   icon: '🎯', brand: '今彩539<span class="brand-sub"> 智能分析系統</span>' },
+  'lotto': { name: '大樂透',    icon: '🎰', brand: '大樂透<span class="brand-sub"> 智能分析系統</span>' },
+  'mark6': { name: '六合彩',    icon: '🀄', brand: '六合彩<span class="brand-sub"> 智能分析系統</span>' },
+  'calif': { name: '加州天天樂', icon: '🌴', brand: '加州天天樂<span class="brand-sub"> 智能分析系統</span>' },
 };
 
 function apiQ(base, extra = '') {
@@ -381,15 +383,18 @@ function buildGapChart() {
 
 // ─── Heatmap ──────────────────────────────────────────────
 function buildHeatmap() {
-  const hm    = $('heatmap');
-  const nums  = statsData.numbers;
-  const maxF  = Math.max(...nums.map(n => n.freq));
-  const minF  = Math.min(...nums.map(n => n.freq));
+  const hm     = $('heatmap');
+  const nums   = statsData.numbers;
+  const maxNum = statsData.maxNum || 39;
+  const maxF   = Math.max(...nums.map(n => n.freq));
+  const minF   = Math.min(...nums.map(n => n.freq));
 
+  // 39 球: 13 cols × 3 rows; 49 球: 7 cols × 7 rows
+  const cols = maxNum === 49 ? 7 : 13;
+  hm.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   hm.innerHTML = '';
 
-  // Build 13 cols × 3 rows = 39 cells
-  for (let i = 1; i <= 39; i++) {
+  for (let i = 1; i <= maxNum; i++) {
     const stat = nums.find(n => n.num === i);
     const t    = stat ? (stat.freq - minF) / (maxF - minF || 1) : 0;
 
@@ -527,10 +532,16 @@ function buildOddEvenChart() {
 function buildRangeChart() {
   if (!allDraws.length) return;
 
+  const maxNum = statsData?.maxNum || 39;
+  const t1 = Math.floor(maxNum / 3);
+  const t2 = Math.floor(maxNum * 2 / 3);
+  const titleEl = $('rangeChartTitle');
+  if (titleEl) titleEl.textContent = `號碼段分佈 (1–${t1} / ${t1+1}–${t2} / ${t2+1}–${maxNum})`;
+
   let low = 0, mid = 0, high = 0;
   allDraws.forEach(d => d.numbers.forEach(n => {
-    if (n <= 13) low++;
-    else if (n <= 26) mid++;
+    if (n <= t1) low++;
+    else if (n <= t2) mid++;
     else high++;
   }));
 
@@ -539,7 +550,7 @@ function buildRangeChart() {
   rangeChartInst = new Chart($('rangeChart'), {
     type: 'doughnut',
     data: {
-      labels: ['低段 1–13', '中段 14–26', '高段 27–39'],
+      labels: [`低段 1–${t1}`, `中段 ${t1+1}–${t2}`, `高段 ${t2+1}–${maxNum}`],
       datasets: [{ data: [low, mid, high], backgroundColor: ['rgba(37,99,235,.7)', 'rgba(124,58,237,.7)', 'rgba(239,68,68,.7)'], borderWidth: 0, hoverOffset: 6 }]
     },
     options: {
@@ -649,6 +660,8 @@ function renderPredictSection() {
 
   // Detail cards
   const grid = $('predictDetail');
+  const numsPerDraw = predData.numbers?.length || statsData?.numsPerDraw || 5;
+  grid.style.gridTemplateColumns = `repeat(${numsPerDraw}, 1fr)`;
   grid.innerHTML = '';
   if (predData.details) {
     predData.details.forEach(d => {

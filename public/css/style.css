@@ -842,11 +842,17 @@ body {
     width: 100%;
     max-width: 400px;
   }
+  .mobile-sub-nav .lottery-switcher { padding: 4px; }
+  .mobile-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
   .mobile-sub-nav .lottery-btn {
-    flex: 1;
     text-align: center;
-    padding: 10px 8px;
-    font-size: 14px;
+    padding: 9px 8px;
+    font-size: 13px;
+    border-radius: 8px;
   }
 
   /* 內容區塊留出底部空間 */

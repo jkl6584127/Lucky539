@@ -10,6 +10,17 @@ const CACHE_FILE       = path.join(DATA_DIR, 'lottery539.json');
 const CALIF_CACHE_FILE = path.join(DATA_DIR, 'lotteryCalif.json');
 const CACHE_TTL        = 30 * 60 * 1000; // 30 minutes
 
+// ─── Generic pilio lottery config ────────────────────────
+// 大樂透(lto) 和 六合彩(ltohk) 共用同一套 pilio 抓取邏輯
+const PILIO_CFGS = {
+  lotto: { kind: 'lto',   maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryLotto.json') },
+  mark6: { kind: 'ltohk', maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryMark6.json') },
+};
+const pilioState = {
+  lotto: { updating: false, progress: { done: 0, total: 0 } },
+  mark6: { updating: false, progress: { done: 0, total: 0 } },
+};
+
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -57,6 +68,18 @@ function loadCalifCache() {
 function saveCalifCache(c) {
   try { fs.writeFileSync(CALIF_CACHE_FILE, JSON.stringify(c)); }
   catch (e) { console.error('[calif-cache] save failed:', e.message); }
+}
+
+// ─── Generic pilio cache ──────────────────────────────────
+function loadPilioCache(cacheFile) {
+  try {
+    if (fs.existsSync(cacheFile)) return JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+  } catch (_) {}
+  return { draws: [], latestDex: 0, lastUpdated: 0 };
+}
+function savePilioCache(cacheFile, c) {
+  try { fs.writeFileSync(cacheFile, JSON.stringify(c)); }
+  catch (e) { console.error('[pilio-cache] save failed:', e.message); }
 }
 
 // ─── HTTP helpers ────────────────────────────────────────
@@ -166,6 +189,157 @@ let progress = { done: 0, total: 0 };
 
 let califUpdating = false;
 let califProgress = { done: 0, total: 0 };
+
+// ─── Generic pilio fetch/update (大樂透 / 六合彩) ─────────
+
+async function fetchPilioBatch(kind, index) {
+  try {
+    const url = `https://www.pilio.idv.tw/Json_ltonew.asp?Lkind=${kind}&Lindex=${index}&Ldesc=desc`;
+    const { data } = await axios.post(url, '', {
+      timeout: 12000,
+      headers: { ...HEADERS, 'Content-Length': '0', 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    return (parsed.lotto || []).filter(x => x.num && x.dex !== undefined);
+  } catch (e) {
+    console.error(`[pilio-batch] kind=${kind} index=${index} error: ${e.message}`);
+    return null;
+  }
+}
+
+function pilioToRecord(item, maxNum) {
+  return {
+    period:  String(item.dex),
+    date:    parseDate(item.date),
+    numbers: parseNums(item.num).filter(n => n >= 1 && n <= maxNum).sort((a, b) => a - b)
+  };
+}
+
+async function updatePilioData(key, force = false) {
+  const cfg   = PILIO_CFGS[key];
+  const state = pilioState[key];
+  const cache = loadPilioCache(cfg.cacheFile);
+  const now   = Date.now();
+  const stale = (now - cache.lastUpdated) > CACHE_TTL;
+  const empty = cache.draws.length === 0;
+
+  if (!force && !stale && !empty) return cache.draws;
+  if (state.updating)             return cache.draws;
+
+  if (!empty && stale && !force) {
+    state.updating = true;
+    updatePilioBackground(key, cache, now).catch(console.error);
+    return cache.draws;
+  }
+
+  state.updating = true;
+  state.progress = { done: 0, total: 0 };
+
+  try {
+    console.log(`[${key}] Fetching latest index…`);
+    const probe = await fetchPilioBatch(cfg.kind, 99999);
+    if (!probe || probe.length === 0) throw new Error('Could not get max index');
+    const maxIndex = parseInt(probe[0].dex) + 1;
+
+    console.log(`[${key}] maxIndex=${maxIndex}, cached=${cache.latestDex}`);
+
+    if (empty || force) {
+      // ── Full fetch ──
+      state.progress.total = maxIndex;
+      let index = maxIndex, errors = 0;
+      const allItems = [];
+
+      while (index > 0) {
+        const batch = await fetchPilioBatch(cfg.kind, index);
+        if (batch === null) { if (++errors >= 5) break; await delay(1000); continue; }
+        if (batch.length === 0) break;
+        errors = 0;
+        allItems.push(...batch);
+        index = parseInt(batch[batch.length - 1].dex);
+        state.progress.done = maxIndex - index;
+        if (allItems.length % 200 === 0) console.log(`[${key}] …${allItems.length} records (dex=${index})`);
+        await delay(150);
+      }
+
+      cache.draws     = allItems.map(r => pilioToRecord(r, cfg.maxNum));
+      cache.latestDex = maxIndex - 1;
+      cache.lastUpdated = now;
+      savePilioCache(cfg.cacheFile, cache);
+      console.log(`[${key}] Full fetch done: ${cache.draws.length} draws`);
+
+    } else if (maxIndex - 1 > cache.latestDex) {
+      // ── Incremental ──
+      const newItems = [];
+      let index = maxIndex, errors = 0;
+
+      while (index > cache.latestDex) {
+        const batch = await fetchPilioBatch(cfg.kind, index);
+        if (batch === null) { if (++errors >= 3) break; continue; }
+        if (batch.length === 0) break;
+        for (const item of batch) {
+          if (parseInt(item.dex) > cache.latestDex) newItems.push(item);
+        }
+        index = parseInt(batch[batch.length - 1].dex);
+        await delay(100);
+      }
+
+      if (newItems.length > 0) {
+        cache.draws     = [...newItems.map(r => pilioToRecord(r, cfg.maxNum)), ...cache.draws];
+        cache.latestDex = maxIndex - 1;
+        console.log(`[${key}] +${newItems.length} new (total: ${cache.draws.length})`);
+      }
+      cache.lastUpdated = now;
+      savePilioCache(cfg.cacheFile, cache);
+    }
+
+  } catch (e) {
+    console.error(`[${key}]`, e.message);
+  } finally {
+    state.updating = false;
+    state.progress = { done: cache.draws.length, total: cache.draws.length };
+  }
+  return cache.draws;
+}
+
+async function updatePilioBackground(key, cache, now) {
+  const cfg   = PILIO_CFGS[key];
+  const state = pilioState[key];
+  state.progress = { done: 0, total: 0 };
+  try {
+    const probe = await fetchPilioBatch(cfg.kind, 99999);
+    if (!probe || probe.length === 0) throw new Error('probe failed');
+    const maxIndex = parseInt(probe[0].dex) + 1;
+
+    if (maxIndex - 1 > cache.latestDex) {
+      const newItems = [];
+      let index = maxIndex, errors = 0;
+      while (index > cache.latestDex) {
+        const batch = await fetchPilioBatch(cfg.kind, index);
+        if (batch === null) { if (++errors >= 3) break; continue; }
+        if (batch.length === 0) break;
+        for (const item of batch) {
+          if (parseInt(item.dex) > cache.latestDex) newItems.push(item);
+        }
+        index = parseInt(batch[batch.length - 1].dex);
+        await delay(100);
+      }
+      if (newItems.length > 0) {
+        cache.draws     = [...newItems.map(r => pilioToRecord(r, cfg.maxNum)), ...cache.draws];
+        cache.latestDex = maxIndex - 1;
+        console.log(`[${key}-bg] +${newItems.length} (total: ${cache.draws.length})`);
+      }
+    }
+    cache.lastUpdated = now;
+    savePilioCache(cfg.cacheFile, cache);
+  } catch (e) {
+    console.error(`[${key}-bg]`, e.message);
+    cache.lastUpdated = now;
+    savePilioCache(cfg.cacheFile, cache);
+  } finally {
+    state.updating = false;
+    state.progress = { done: cache.draws.length, total: cache.draws.length };
+  }
+}
 
 async function updateData(force = false) {
   const cache = loadCache();
@@ -473,38 +647,46 @@ async function updateCalifInBackground(cache, now) {
 
 // ─── Statistics ──────────────────────────────────────────
 
-function computeStats(draws) {
-  const freq       = Array(40).fill(0);
-  const lastSeen   = Array(40).fill(-1);
-  const recentFreq = Array(40).fill(0);
+function computeStats(draws, maxNum = 39) {
+  const size     = maxNum + 1;
+  const freq       = Array(size).fill(0);
+  const lastSeen   = Array(size).fill(-1);
+  const recentFreq = Array(size).fill(0);
 
   draws.forEach((d, idx) => {
     d.numbers.forEach(n => {
-      freq[n]++;
-      if (lastSeen[n] === -1) lastSeen[n] = idx;
+      if (n >= 1 && n <= maxNum) {
+        freq[n]++;
+        if (lastSeen[n] === -1) lastSeen[n] = idx;
+      }
     });
   });
 
-  draws.slice(0, 100).forEach(d => d.numbers.forEach(n => recentFreq[n]++));
+  draws.slice(0, 100).forEach(d => d.numbers.forEach(n => {
+    if (n >= 1 && n <= maxNum) recentFreq[n]++;
+  }));
 
-  for (let i = 1; i <= 39; i++) if (lastSeen[i] === -1) lastSeen[i] = draws.length;
+  for (let i = 1; i <= maxNum; i++) if (lastSeen[i] === -1) lastSeen[i] = draws.length;
 
   return { freq, lastSeen, recentFreq };
 }
 
 // ─── Prediction ──────────────────────────────────────────
 
-function predict(draws) {
-  if (draws.length < 20)
-    return { numbers: [7,14,21,28,35], confidence: 0, details: [] };
+function predict(draws, maxNum = 39, numsPerDraw = 5) {
+  if (draws.length < 20) {
+    const fallback = Array.from({ length: numsPerDraw }, (_, i) => Math.round((i + 1) * maxNum / (numsPerDraw + 1)));
+    return { numbers: fallback, confidence: 0, details: [] };
+  }
 
-  const { freq, lastSeen, recentFreq } = computeStats(draws);
-  const total    = draws.length;
-  const expFreq  = (total * 5) / 39;
-  const expR100  = (100   * 5) / 39;
+  const { freq, lastSeen, recentFreq } = computeStats(draws, maxNum);
+  const total   = draws.length;
+  const expFreq = (total * numsPerDraw) / maxNum;
+  const expR100 = (100   * numsPerDraw) / maxNum;
+  const poolSize = Math.min(Math.ceil(maxNum * 0.55), maxNum);
 
-  const scores = Array(40).fill(0);
-  for (let i = 1; i <= 39; i++) {
+  const scores = Array(maxNum + 1).fill(0);
+  for (let i = 1; i <= maxNum; i++) {
     const fScore = freq[i]       / expFreq;
     const rScore = recentFreq[i] / expR100;
     const gScore = Math.min(lastSeen[i] / 12, 3.0);
@@ -512,15 +694,15 @@ function predict(draws) {
   }
 
   const ranked = [];
-  for (let i = 1; i <= 39; i++) ranked.push({ num: i, score: scores[i] });
+  for (let i = 1; i <= maxNum; i++) ranked.push({ num: i, score: scores[i] });
   ranked.sort((a, b) => b.score - a.score);
 
-  const pool      = ranked.slice(0, 22);
+  const pool      = ranked.slice(0, poolSize);
   const poolScore = pool.reduce((s, x) => s + x.score, 0);
   const selected  = [];
   let   tries     = 0;
 
-  while (selected.length < 5 && tries++ < 300) {
+  while (selected.length < numsPerDraw && tries++ < 500) {
     let r = Math.random() * poolScore;
     for (const { num, score } of pool) {
       r -= score;
@@ -528,13 +710,13 @@ function predict(draws) {
     }
   }
   for (const { num } of ranked) {
-    if (selected.length >= 5) break;
+    if (selected.length >= numsPerDraw) break;
     if (!selected.includes(num)) selected.push(num);
   }
 
   selected.sort((a, b) => a - b);
 
-  const avgScore   = selected.reduce((s, n) => s + scores[n], 0) / 5;
+  const avgScore   = selected.reduce((s, n) => s + scores[n], 0) / numsPerDraw;
   const confidence = Math.min(Math.round(avgScore * 45 + 20), 92);
 
   return {
@@ -552,47 +734,65 @@ function predict(draws) {
 
 // ─── API routes ──────────────────────────────────────────
 
-app.get('/api/status', (req, res) => {
-  if (req.query.lottery === 'calif') {
-    const c = loadCalifCache();
-    res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating: califUpdating, progress: califProgress });
-  } else {
-    const c = loadCache();
-    res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating, progress });
+// Helper: resolve draws + lottery meta from request
+async function resolveDraws(req, force = false) {
+  const type = req.query.lottery || '539';
+  if (type === 'calif') {
+    const draws = await updateCalifData(force);
+    return { draws, maxNum: 39, numsPerDraw: 5 };
   }
+  if (PILIO_CFGS[type]) {
+    const draws = await updatePilioData(type, force);
+    return { draws, maxNum: PILIO_CFGS[type].maxNum, numsPerDraw: PILIO_CFGS[type].numsPerDraw };
+  }
+  // default: 539
+  const draws = await updateData(force);
+  return { draws, maxNum: 39, numsPerDraw: 5 };
+}
+
+app.get('/api/status', (req, res) => {
+  const type = req.query.lottery || '539';
+  if (type === 'calif') {
+    const c = loadCalifCache();
+    return res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating: califUpdating, progress: califProgress });
+  }
+  if (PILIO_CFGS[type]) {
+    const c = loadPilioCache(PILIO_CFGS[type].cacheFile);
+    const s = pilioState[type];
+    return res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating: s.updating, progress: s.progress });
+  }
+  const c = loadCache();
+  res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating, progress });
 });
 
 app.get('/api/draws', async (req, res) => {
   try {
-    const isCalif = req.query.lottery === 'calif';
-    const draws   = isCalif ? await updateCalifData() : await updateData();
-    const limit   = Math.min(parseInt(req.query.limit)  || 100, 10000);
-    const offset  = parseInt(req.query.offset) || 0;
+    const { draws } = await resolveDraws(req);
+    const limit  = Math.min(parseInt(req.query.limit)  || 100, 10000);
+    const offset = parseInt(req.query.offset) || 0;
     res.json({ total: draws.length, data: draws.slice(offset, offset + limit) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/latest', async (req, res) => {
   try {
-    const isCalif = req.query.lottery === 'calif';
-    const draws   = isCalif ? await updateCalifData() : await updateData();
+    const { draws } = await resolveDraws(req);
     res.json(draws[0] || null);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const isCalif = req.query.lottery === 'calif';
-    const draws   = isCalif ? await updateCalifData() : await updateData();
+    const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
     if (!draws.length) return res.status(503).json({ error: 'No data' });
 
-    const { freq, lastSeen, recentFreq } = computeStats(draws);
+    const { freq, lastSeen, recentFreq } = computeStats(draws, maxNum);
     const numbers = [];
-    for (let i = 1; i <= 39; i++) {
+    for (let i = 1; i <= maxNum; i++) {
       numbers.push({
         num:        i,
         freq:       freq[i],
-        pct:        +((freq[i] / (draws.length * 5)) * 100).toFixed(2),
+        pct:        +((freq[i] / (draws.length * numsPerDraw)) * 100).toFixed(2),
         gap:        lastSeen[i],
         recentFreq: recentFreq[i]
       });
@@ -600,9 +800,11 @@ app.get('/api/stats', async (req, res) => {
     const byFreq = [...numbers].sort((a, b) => b.freq - a.freq);
     res.json({
       totalDraws: draws.length,
+      maxNum,
+      numsPerDraw,
       numbers,
-      hot10:  byFreq.slice(0, 10).map(x => x.num),
-      cold10: byFreq.slice(-10).reverse().map(x => x.num),
+      hot10:   byFreq.slice(0, 10).map(x => x.num),
+      cold10:  byFreq.slice(-10).reverse().map(x => x.num),
       maxFreq: byFreq[0].freq,
       minFreq: byFreq[byFreq.length - 1].freq
     });
@@ -611,24 +813,23 @@ app.get('/api/stats', async (req, res) => {
 
 app.get('/api/predict', async (req, res) => {
   try {
-    const isCalif = req.query.lottery === 'calif';
-    const draws   = isCalif ? await updateCalifData() : await updateData();
+    const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
     if (draws.length < 20) return res.status(503).json({ error: 'Insufficient data' });
-    res.json(predict(draws));
+    res.json(predict(draws, maxNum, numsPerDraw));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/refresh', async (req, res) => {
   try {
-    if (req.query.lottery === 'calif') {
-      const c = loadCalifCache();
-      c.lastUpdated = 0;
-      saveCalifCache(c);
+    const type = req.query.lottery || '539';
+    if (type === 'calif') {
+      const c = loadCalifCache(); c.lastUpdated = 0; saveCalifCache(c);
       updateCalifData(true).catch(console.error);
+    } else if (PILIO_CFGS[type]) {
+      const c = loadPilioCache(PILIO_CFGS[type].cacheFile); c.lastUpdated = 0; savePilioCache(PILIO_CFGS[type].cacheFile, c);
+      updatePilioData(type, true).catch(console.error);
     } else {
-      const c = loadCache();
-      c.lastUpdated = 0;
-      saveCache(c);
+      const c = loadCache(); c.lastUpdated = 0; saveCache(c);
       updateData().catch(console.error);
     }
     res.json({ ok: true });
@@ -639,9 +840,11 @@ app.post('/api/refresh', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log('\n  ╔══════════════════════════════════════════╗');
-  console.log(`  ║   今彩539 + 加州天天樂  智能分析系統      ║`);
+  console.log(`  ║  539 / 加州 / 大樂透 / 六合彩 智能分析   ║`);
   console.log(`  ║   http://localhost:${PORT}                ║`);
   console.log('  ╚══════════════════════════════════════════╝\n');
   updateData().catch(console.error);
   updateCalifData().catch(console.error);
+  updatePilioData('lotto').catch(console.error);
+  updatePilioData('mark6').catch(console.error);
 });

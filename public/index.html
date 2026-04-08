@@ -39,6 +39,8 @@
     <!-- 彩券切換 (桌面版) -->
     <div class="lottery-switcher desktop-only">
       <button class="lottery-btn active" data-lottery="539">今彩539</button>
+      <button class="lottery-btn" data-lottery="lotto">大樂透</button>
+      <button class="lottery-btn" data-lottery="mark6">六合彩</button>
       <button class="lottery-btn" data-lottery="calif">加州天天樂</button>
     </div>
     <div class="nav-divider desktop-only"></div>
@@ -58,8 +60,10 @@
 
 <!-- 彩券切換列 (手機版獨立一列，桌面隱藏) -->
 <div class="mobile-sub-nav">
-  <div class="lottery-switcher">
+  <div class="lottery-switcher mobile-grid">
     <button class="lottery-btn active" data-lottery="539">🎯 今彩539</button>
+    <button class="lottery-btn" data-lottery="lotto">🎰 大樂透</button>
+    <button class="lottery-btn" data-lottery="mark6">🀄 六合彩</button>
     <button class="lottery-btn" data-lottery="calif">🌴 加州天天樂</button>
   </div>
 </div>
@@ -195,7 +199,7 @@
       </div>
     </div>
     <div class="card chart-card">
-      <div class="card-title">號碼段分佈 (1–13 / 14–26 / 27–39)</div>
+      <div class="card-title" id="rangeChartTitle">號碼段分佈</div>
       <div class="chart-wrap small">
         <canvas id="rangeChart"></canvas>
       </div>
