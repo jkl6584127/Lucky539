@@ -22,7 +22,7 @@ const LOTTERY_META = {
 
 function apiQ(base, extra = '') {
   const sep = base.includes('?') ? '&' : '?';
-  const lq  = currentLottery === 'calif' ? `${sep}lottery=calif` : '';
+  const lq  = currentLottery !== '539' ? `${sep}lottery=${currentLottery}` : '';
   return base + lq + (extra ? (lq ? '&' : sep) + extra : '');
 }
 
