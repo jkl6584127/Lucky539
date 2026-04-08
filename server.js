@@ -208,10 +208,11 @@ async function fetchPilioBatch(kind, index) {
 }
 
 function pilioToRecord(item, maxNum) {
+  const nums = item.num.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= maxNum);
   return {
     period:  String(item.dex),
     date:    parseDate(item.date),
-    numbers: parseNums(item.num).filter(n => n >= 1 && n <= maxNum).sort((a, b) => a - b)
+    numbers: nums.sort((a, b) => a - b)
   };
 }
 
