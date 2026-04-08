@@ -648,7 +648,7 @@ async function updateCalifInBackground(cache, now) {
 
 // ─── Statistics ──────────────────────────────────────────
 
-function computeStats(draws, maxNum = 39) {
+function computeStats(draws, maxNum = 39, recentN = 100) {
   const size     = maxNum + 1;
   const freq       = Array(size).fill(0);
   const lastSeen   = Array(size).fill(-1);
@@ -663,27 +663,28 @@ function computeStats(draws, maxNum = 39) {
     });
   });
 
-  draws.slice(0, 100).forEach(d => d.numbers.forEach(n => {
+  const recentSlice = Math.min(recentN, draws.length);
+  draws.slice(0, recentSlice).forEach(d => d.numbers.forEach(n => {
     if (n >= 1 && n <= maxNum) recentFreq[n]++;
   }));
 
   for (let i = 1; i <= maxNum; i++) if (lastSeen[i] === -1) lastSeen[i] = draws.length;
 
-  return { freq, lastSeen, recentFreq };
+  return { freq, lastSeen, recentFreq, recentSlice };
 }
 
 // ─── Prediction ──────────────────────────────────────────
 
-function predict(draws, maxNum = 39, numsPerDraw = 5) {
+function predict(draws, maxNum = 39, numsPerDraw = 5, recentN = 100) {
   if (draws.length < 20) {
     const fallback = Array.from({ length: numsPerDraw }, (_, i) => Math.round((i + 1) * maxNum / (numsPerDraw + 1)));
     return { numbers: fallback, confidence: 0, details: [] };
   }
 
-  const { freq, lastSeen, recentFreq } = computeStats(draws, maxNum);
+  const { freq, lastSeen, recentFreq, recentSlice } = computeStats(draws, maxNum, recentN);
   const total   = draws.length;
   const expFreq = (total * numsPerDraw) / maxNum;
-  const expR100 = (100   * numsPerDraw) / maxNum;
+  const expR100 = (recentSlice * numsPerDraw) / maxNum;
   const poolSize = Math.min(Math.ceil(maxNum * 0.55), maxNum);
 
   const scores = Array(maxNum + 1).fill(0);
@@ -723,6 +724,7 @@ function predict(draws, maxNum = 39, numsPerDraw = 5) {
   return {
     numbers:    selected,
     confidence,
+    recentN:    recentSlice,
     details:    selected.map(n => ({
       num:        n,
       freq:       freq[n],
@@ -787,7 +789,10 @@ app.get('/api/stats', async (req, res) => {
     const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
     if (!draws.length) return res.status(503).json({ error: 'No data' });
 
-    const { freq, lastSeen, recentFreq } = computeStats(draws, maxNum);
+    // recentN: 使用者自訂分析期數，上限為歷史總期數
+    const recentN = Math.max(1, Math.min(parseInt(req.query.recentN) || 100, draws.length));
+
+    const { freq, lastSeen, recentFreq, recentSlice } = computeStats(draws, maxNum, recentN);
     const numbers = [];
     for (let i = 1; i <= maxNum; i++) {
       numbers.push({
@@ -801,6 +806,7 @@ app.get('/api/stats', async (req, res) => {
     const byFreq = [...numbers].sort((a, b) => b.freq - a.freq);
     res.json({
       totalDraws: draws.length,
+      recentN:    recentSlice,
       maxNum,
       numsPerDraw,
       numbers,
@@ -816,7 +822,8 @@ app.get('/api/predict', async (req, res) => {
   try {
     const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
     if (draws.length < 20) return res.status(503).json({ error: 'Insufficient data' });
-    res.json(predict(draws, maxNum, numsPerDraw));
+    const recentN = Math.max(1, Math.min(parseInt(req.query.recentN) || 100, draws.length));
+    res.json(predict(draws, maxNum, numsPerDraw, recentN));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

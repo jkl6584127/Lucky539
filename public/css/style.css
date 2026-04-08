@@ -810,6 +810,151 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
 
+/* ── Period setting card ──────────────────────────────── */
+.period-setting-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--purple);
+}
+.period-setting-header {
+  margin-bottom: 16px;
+}
+.period-setting-hint {
+  color: var(--sub);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.period-setting-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.period-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.period-label {
+  color: var(--sub);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.period-input {
+  width: 120px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-size: 16px;
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  transition: border-color .2s;
+}
+.period-input:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+}
+/* Hide number input spinner arrows */
+.period-input::-webkit-outer-spin-button,
+.period-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.period-input[type=number] { -moz-appearance: textfield; }
+
+.period-apply-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .2s, transform .1s;
+}
+.period-apply-btn:hover {
+  opacity: .9;
+  transform: translateY(-1px);
+}
+.period-apply-btn:active {
+  transform: translateY(0);
+}
+
+.period-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.period-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.1);
+  outline: none;
+  cursor: pointer;
+}
+.period-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--purple), var(--purple2));
+  box-shadow: 0 0 8px rgba(124,58,237,0.4);
+  cursor: pointer;
+  transition: transform .15s;
+}
+.period-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+.period-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--purple), var(--purple2));
+  box-shadow: 0 0 8px rgba(124,58,237,0.4);
+  cursor: pointer;
+}
+.period-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: 'Orbitron', monospace;
+}
+
+.period-quick-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.period-quick-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--sub);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.period-quick-btn:hover {
+  border-color: var(--purple);
+  color: var(--purple2);
+}
+.period-quick-btn.active {
+  background: rgba(124,58,237,0.15);
+  border-color: var(--purple);
+  color: var(--purple2);
+  font-weight: 600;
+}
+
 /* ── Mobile layout ─────────────────────────────────────── */
 @media (max-width: 768px) {
 
@@ -909,6 +1054,12 @@ body {
   .hero-row { grid-template-columns: 1fr; }
   .chart-row { grid-template-columns: 1fr; }
   .chart-row:has(.chart-card:nth-child(3)) { grid-template-columns: 1fr; }
+
+  /* 期數設定手機適配 */
+  .period-input-group { flex-wrap: wrap; }
+  .period-input { width: 100px; }
+  .period-quick-btns { gap: 6px; }
+  .period-quick-btn { padding: 5px 10px; font-size: 12px; }
 
   /* 球縮小一點 */
   .ball { width: 50px; height: 50px; font-size: 18px; }

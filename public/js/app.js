@@ -11,6 +11,7 @@ let statsData   = null;
 let predData    = null;
 let histPage    = 1;
 let histFilter  = '';
+let recentN     = 100;      // 使用者自訂分析期數
 const PAGE_SIZE = 30;
 
 const LOTTERY_META = {
@@ -72,7 +73,12 @@ document.querySelectorAll('.lottery-btn').forEach(btn => {
     predData   = null;
     histPage   = 1;
     histFilter = '';
-    $('searchInput').value = '';
+    recentN    = 100;
+    $('searchInput').value  = '';
+    $('recentNInput').value = 100;
+    $('recentNSlider').value = 100;
+    document.querySelectorAll('.period-quick-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.period-quick-btn[data-n="100"]').classList.add('active');
 
     showLoading(true);
     $('loadingSub').textContent = '正在切換彩券種類，請稍候…';
@@ -110,7 +116,7 @@ $('refreshBtn').addEventListener('click', async () => {
 // ─── Regen button ─────────────────────────────────────────
 $('regenBtn').addEventListener('click', async () => {
   try {
-    const r = await fetch(apiQ('/api/predict'));
+    const r = await fetch(apiQ('/api/predict', `recentN=${recentN}`));
     predData = await r.json();
     renderPredictSection();
     renderHeroPred();
@@ -181,8 +187,8 @@ async function loadAll() {
   try {
     // Parallel fetch
     const [statsRes, predRes, latestRes, drawsRes] = await Promise.all([
-      fetch(apiQ('/api/stats')),
-      fetch(apiQ('/api/predict')),
+      fetch(apiQ('/api/stats', `recentN=${recentN}`)),
+      fetch(apiQ('/api/predict', `recentN=${recentN}`)),
       fetch(apiQ('/api/latest')),
       fetch(apiQ('/api/draws', 'limit=10000'))
     ]);
@@ -224,7 +230,7 @@ function schedulePoll() {
       const s = await r.json();
       if (!s.updating) {
         // Check if server has new data
-        const r2 = await fetch(apiQ('/api/stats'));
+        const r2 = await fetch(apiQ('/api/stats', `recentN=${recentN}`));
         const newStats = await r2.json();
         if (newStats.totalDraws !== statsData.totalDraws) {
           await loadAll();
@@ -289,12 +295,43 @@ function renderDashboard(latest) {
       $('kpiDate').textContent = yr + ' 年';
     }
 
+    // 設定期數選擇器上限
+    updatePeriodSelector();
+
     // Charts
     buildFreqChart();
     buildGapChart();
     buildHeatmap();
     renderHotCold();
   }
+}
+
+// ─── Period selector logic ───────────────────────────────
+function updatePeriodSelector() {
+  const total = statsData.totalDraws;
+  const slider = $('recentNSlider');
+  const input  = $('recentNInput');
+
+  slider.max = total;
+  input.max  = total;
+  $('periodMaxLabel').textContent = total.toLocaleString();
+
+  // 確保 recentN 不超過歷史總期數
+  if (recentN > total) {
+    recentN = total;
+    slider.value = recentN;
+    input.value  = recentN;
+  }
+
+  // 更新所有「近N期」標籤
+  updateRecentLabels();
+}
+
+function updateRecentLabels() {
+  const label = recentN >= statsData.totalDraws ? '全部' : recentN;
+  document.querySelectorAll('.recentN-label').forEach(el => {
+    el.textContent = label;
+  });
 }
 
 function renderHeroPred() {
@@ -477,7 +514,7 @@ function buildFreqAllChart() {
           order: 1
         },
         {
-          label: '近100期出現',
+          label: `近${statsData.recentN || recentN}期出現`,
           data: nums.map(n => n.recentFreq),
           type: 'line',
           borderColor: 'rgba(6,182,212,.8)',
@@ -613,7 +650,10 @@ function buildStatsTable() {
   const maxFreq = statsData.maxFreq;
 
   statsData.numbers.forEach(n => {
-    const hotness = n.recentFreq / (100 * 5 / 39);
+    const rn = statsData.recentN || recentN;
+    const maxN = statsData.maxNum || 39;
+    const npd  = statsData.numsPerDraw || 5;
+    const hotness = n.recentFreq / (rn * npd / maxN);
     let badgeHtml = '';
     if (hotness > 1.3)      badgeHtml = '<span class="badge-hot">熱門</span>';
     else if (hotness < 0.7) badgeHtml = '<span class="badge-cold">冷門</span>';
@@ -670,7 +710,7 @@ function renderPredictSection() {
       card.innerHTML = `
         <div class="detail-num">${fmt(d.num)}</div>
         <div class="detail-row">出現次數 <span>${d.freq}</span></div>
-        <div class="detail-row">近期出現 <span>${d.recentFreq}/100期</span></div>
+        <div class="detail-row">近期出現 <span>${d.recentFreq}/${predData.recentN || recentN}期</span></div>
         <div class="detail-row">遺漏值 <span style="color:${d.gap>20?'#ef4444':'#60a5fa'}">${d.gap} 期</span></div>
         <div class="detail-row">綜合評分 <span style="color:#a78bfa">${d.score}</span></div>
         <div class="detail-score" style="width:${Math.min(d.score,100)}%"></div>
@@ -693,7 +733,7 @@ async function renderMultiPred() {
   // Generate 5 different predictions via the API + local variation
   for (let i = 0; i < 5; i++) {
     try {
-      const r = await fetch(apiQ('/api/predict'));
+      const r = await fetch(apiQ('/api/predict', `recentN=${recentN}`));
       const p = await r.json();
       results.push({ label: labels[i], numbers: p.numbers, conf: p.confidence });
     } catch (_) {
@@ -809,6 +849,58 @@ $('searchInput').addEventListener('input', e => {
     histPage   = 1;
     renderHistory();
   }, 250);
+});
+
+// ─── Period selector events ──────────────────────────────
+$('recentNSlider').addEventListener('input', e => {
+  const v = parseInt(e.target.value);
+  $('recentNInput').value = v;
+});
+
+$('recentNInput').addEventListener('input', e => {
+  let v = parseInt(e.target.value);
+  if (!isNaN(v)) $('recentNSlider').value = v;
+});
+
+$('applyRecentN').addEventListener('click', async () => {
+  let v = parseInt($('recentNInput').value);
+  const total = statsData ? statsData.totalDraws : 10000;
+  if (isNaN(v) || v < 10) v = 10;
+  if (v > total) v = total;
+  recentN = v;
+  $('recentNInput').value  = v;
+  $('recentNSlider').value = v;
+
+  // 更新快捷按鈕 active 狀態
+  document.querySelectorAll('.period-quick-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.period-quick-btn').forEach(b => {
+    const n = parseInt(b.dataset.n);
+    if ((n === 0 && v === total) || n === v) b.classList.add('active');
+  });
+
+  await loadAll();
+});
+
+// 按 Enter 也能套用
+$('recentNInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('applyRecentN').click();
+});
+
+document.querySelectorAll('.period-quick-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const total = statsData ? statsData.totalDraws : 10000;
+    let n = parseInt(btn.dataset.n);
+    if (n === 0) n = total;  // 「全部期數」
+    if (n > total) n = total;
+    recentN = n;
+    $('recentNInput').value  = n;
+    $('recentNSlider').value = n;
+
+    document.querySelectorAll('.period-quick-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    await loadAll();
+  });
 });
 
 // ─── Init ─────────────────────────────────────────────────

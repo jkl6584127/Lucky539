@@ -140,6 +140,35 @@
     </div>
   </div>
 
+  <!-- ── 分析期數設定 ── -->
+  <div class="card period-setting-card">
+    <div class="period-setting-header">
+      <div class="card-title" style="margin:0">分析期數設定</div>
+      <div class="period-setting-hint">設定 AI 分析與統計使用的歷史期數範圍（上限為該彩券歷史總期數）</div>
+    </div>
+    <div class="period-setting-body">
+      <div class="period-input-group">
+        <label class="period-label" for="recentNInput">分析近</label>
+        <input type="number" id="recentNInput" class="period-input" min="10" value="100">
+        <span class="period-label">期</span>
+        <button class="period-apply-btn" id="applyRecentN">套用</button>
+      </div>
+      <div class="period-slider-group">
+        <input type="range" id="recentNSlider" class="period-slider" min="10" value="100">
+        <div class="period-range-labels">
+          <span>10</span>
+          <span id="periodMaxLabel">─</span>
+        </div>
+      </div>
+      <div class="period-quick-btns" id="periodQuickBtns">
+        <button class="period-quick-btn active" data-n="100">近100期</button>
+        <button class="period-quick-btn" data-n="500">近500期</button>
+        <button class="period-quick-btn" data-n="1000">近1000期</button>
+        <button class="period-quick-btn" data-n="0">全部期數</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Dual chart row ── -->
   <div class="chart-row">
     <div class="card chart-card">
@@ -159,11 +188,11 @@
   <!-- ── Hot / Cold row ── -->
   <div class="chart-row">
     <div class="card">
-      <div class="card-title">🔥 近100期熱門號碼 Top 10</div>
+      <div class="card-title">🔥 近<span class="recentN-label">100</span>期熱門號碼 Top 10</div>
       <div class="num-pills" id="hotNums"></div>
     </div>
     <div class="card">
-      <div class="card-title">❄️ 近100期冷門號碼 Bottom 10</div>
+      <div class="card-title">❄️ 近<span class="recentN-label">100</span>期冷門號碼 Bottom 10</div>
       <div class="num-pills" id="coldNums"></div>
     </div>
   </div>
@@ -221,7 +250,7 @@
             <th>號碼</th>
             <th>出現次數</th>
             <th>出現率 %</th>
-            <th>近100期出現</th>
+            <th>近<span class="recentN-label">100</span>期出現</th>
             <th>距上次出現 (期)</th>
             <th>熱度</th>
           </tr>
@@ -346,6 +375,6 @@
   </button>
 </nav>
 
-<script src="js/app.js?v=3"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>
