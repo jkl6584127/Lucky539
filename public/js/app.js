@@ -5,12 +5,24 @@
 'use strict';
 
 // ─── State ──────────────────────────────────────────────
+let currentLottery = '539'; // '539' or 'calif'
 let allDraws    = [];
 let statsData   = null;
 let predData    = null;
 let histPage    = 1;
 let histFilter  = '';
 const PAGE_SIZE = 30;
+
+const LOTTERY_META = {
+  '539':   { name: '今彩539', icon: '🎯', brand: '今彩539<span class="brand-sub"> 智能分析系統</span>' },
+  'calif': { name: '加州天天樂', icon: '🌴', brand: '加州天天樂<span class="brand-sub"> 智能分析系統</span>' }
+};
+
+function apiQ(base, extra = '') {
+  const sep = base.includes('?') ? '&' : '?';
+  const lq  = currentLottery === 'calif' ? `${sep}lottery=calif` : '';
+  return base + lq + (extra ? (lq ? '&' : sep) + extra : '');
+}
 
 let freqChartInst    = null;
 let gapChartInst     = null;
@@ -39,6 +51,30 @@ Chart.defaults.color          = '#94a3b8';
 Chart.defaults.borderColor    = 'rgba(255,255,255,0.06)';
 Chart.defaults.font.family    = "'Noto Sans TC', sans-serif";
 
+// ─── Lottery switcher ────────────────────────────────────
+document.querySelectorAll('.lottery-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (btn.dataset.lottery === currentLottery) return;
+    currentLottery = btn.dataset.lottery;
+
+    document.querySelectorAll('.lottery-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const meta = LOTTERY_META[currentLottery];
+    $('brandText').innerHTML = meta.brand;
+
+    // Reset state
+    allDraws   = [];
+    statsData  = null;
+    predData   = null;
+    histPage   = 1;
+    histFilter = '';
+    $('searchInput').value = '';
+
+    await loadAll();
+  });
+});
+
 // ─── Navigation ──────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -57,7 +93,7 @@ document.querySelectorAll('.nav-tab').forEach(btn => {
 // ─── Refresh button ───────────────────────────────────────
 $('refreshBtn').addEventListener('click', async () => {
   $('refreshBtn').classList.add('spinning');
-  await fetch('/api/refresh', { method: 'POST' }).catch(() => {});
+  await fetch(apiQ('/api/refresh'), { method: 'POST' }).catch(() => {});
   await delay(800);
   await loadAll();
   $('refreshBtn').classList.remove('spinning');
@@ -66,7 +102,7 @@ $('refreshBtn').addEventListener('click', async () => {
 // ─── Regen button ─────────────────────────────────────────
 $('regenBtn').addEventListener('click', async () => {
   try {
-    const r = await fetch('/api/predict');
+    const r = await fetch(apiQ('/api/predict'));
     predData = await r.json();
     renderPredictSection();
     renderHeroPred();
@@ -137,10 +173,10 @@ async function loadAll() {
   try {
     // Parallel fetch
     const [statsRes, predRes, latestRes, drawsRes] = await Promise.all([
-      fetch('/api/stats'),
-      fetch('/api/predict'),
-      fetch('/api/latest'),
-      fetch('/api/draws?limit=10000')
+      fetch(apiQ('/api/stats')),
+      fetch(apiQ('/api/predict')),
+      fetch(apiQ('/api/latest')),
+      fetch(apiQ('/api/draws', 'limit=10000'))
     ]);
 
     if (!statsRes.ok) throw new Error('stats fetch failed');
@@ -175,11 +211,11 @@ function schedulePoll() {
   setTimeout(async () => {
     try {
       setStatus('檢查更新中…', true);
-      const r = await fetch('/api/status');
+      const r = await fetch(apiQ('/api/status'));
       const s = await r.json();
       if (!s.updating) {
         // Check if server has new data
-        const r2 = await fetch('/api/stats');
+        const r2 = await fetch(apiQ('/api/stats'));
         const newStats = await r2.json();
         if (newStats.totalDraws !== statsData.totalDraws) {
           await loadAll();
@@ -618,7 +654,7 @@ async function renderMultiPred() {
   // Generate 5 different predictions via the API + local variation
   for (let i = 0; i < 5; i++) {
     try {
-      const r = await fetch('/api/predict');
+      const r = await fetch(apiQ('/api/predict'));
       const p = await r.json();
       results.push({ label: labels[i], numbers: p.numbers, conf: p.confidence });
     } catch (_) {
@@ -744,7 +780,7 @@ $('searchInput').addEventListener('input', e => {
   let tries = 0;
   while (tries++ < 120) {
     try {
-      const r = await fetch('/api/status');
+      const r = await fetch(apiQ('/api/status'));
       const s = await r.json();
       if (s.total > 0) break;
       if (s.updating && s.progress && s.progress.total > 0) {

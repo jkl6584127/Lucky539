@@ -6,8 +6,9 @@ const path    = require('path');
 const app        = express();
 const PORT       = process.env.PORT || 3000;
 const DATA_DIR   = path.join(__dirname, 'data');
-const CACHE_FILE = path.join(DATA_DIR, 'lottery539.json');
-const CACHE_TTL  = 30 * 60 * 1000; // 30 minutes
+const CACHE_FILE       = path.join(DATA_DIR, 'lottery539.json');
+const CALIF_CACHE_FILE = path.join(DATA_DIR, 'lotteryCalif.json');
+const CACHE_TTL        = 30 * 60 * 1000; // 30 minutes
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -40,6 +41,22 @@ function loadCache() {
 function saveCache(c) {
   try { fs.writeFileSync(CACHE_FILE, JSON.stringify(c)); }
   catch (e) { console.error('[cache] save failed:', e.message); }
+}
+
+// ─── California Cache ─────────────────────────────────────
+
+function loadCalifCache() {
+  try {
+    if (fs.existsSync(CALIF_CACHE_FILE)) {
+      return JSON.parse(fs.readFileSync(CALIF_CACHE_FILE, 'utf8'));
+    }
+  } catch (_) {}
+  return { draws: [], latestPeriod: 0, lastUpdated: 0 };
+}
+
+function saveCalifCache(c) {
+  try { fs.writeFileSync(CALIF_CACHE_FILE, JSON.stringify(c)); }
+  catch (e) { console.error('[calif-cache] save failed:', e.message); }
 }
 
 // ─── HTTP helpers ────────────────────────────────────────
@@ -146,6 +163,9 @@ function assignOfficialPeriods(draws) {
 
 let updating = false;
 let progress = { done: 0, total: 0 };
+
+let califUpdating = false;
+let califProgress = { done: 0, total: 0 };
 
 async function updateData(force = false) {
   const cache = loadCache();
@@ -296,6 +316,163 @@ async function updateInBackground(cache, now) {
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// ─── California Fantasy5 fetch ────────────────────────────
+
+const CALIF_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+  'Accept': 'application/json, */*'
+};
+
+async function fetchCalifBatch(page, limit = 100) {
+  try {
+    const url = `https://www.cake.idv.tw/api/lottery?a=history&g=Fantasy5&limit=${limit}&p=${page}`;
+    const { data } = await axios.get(url, { timeout: 15000, headers: CALIF_HEADERS });
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    return (parsed.data?.g || []).filter(x => x.gResult && x.gNum !== undefined);
+  } catch (e) {
+    console.error(`[calif-batch] page=${page} error: ${e.message}`);
+    return null;
+  }
+}
+
+function califToRecord(item) {
+  const ts   = item.gDate * 1000;
+  const d    = new Date(ts);
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth() + 1).padStart(2, '0');
+  const dd   = String(d.getDate()).padStart(2, '0');
+  return {
+    period:  String(item.gNum),
+    date:    `${yyyy}-${mm}-${dd}`,
+    numbers: item.gResult.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= 39).sort((a, b) => a - b)
+  };
+}
+
+async function updateCalifData(force = false) {
+  const cache = loadCalifCache();
+  const now   = Date.now();
+  const stale = (now - cache.lastUpdated) > CACHE_TTL;
+  const empty = cache.draws.length === 0;
+
+  if (!force && !stale && !empty) return cache.draws;
+  if (califUpdating)              return cache.draws;
+
+  if (!empty && stale && !force) {
+    califUpdating = true;
+    updateCalifInBackground(cache, now).catch(console.error);
+    return cache.draws;
+  }
+
+  califUpdating = true;
+  califProgress = { done: 0, total: 0 };
+
+  try {
+    console.log(`[calif] Starting fetch…`);
+
+    if (!empty && !force) {
+      // ── Incremental ──
+      const latestPeriod = cache.latestPeriod;
+      let page = 1, errors = 0;
+      const newItems = [];
+      let done = false;
+
+      while (!done) {
+        const batch = await fetchCalifBatch(page);
+        if (batch === null) { if (++errors >= 3) break; await delay(500); continue; }
+        if (batch.length === 0) break;
+        errors = 0;
+
+        for (const item of batch) {
+          if (parseInt(item.gNum) > latestPeriod) newItems.push(item);
+          else { done = true; break; }
+        }
+        page++;
+        await delay(200);
+      }
+
+      if (newItems.length > 0) {
+        cache.draws = [...newItems.map(califToRecord), ...cache.draws];
+        cache.latestPeriod = parseInt(newItems[0].gNum);
+        console.log(`[calif] +${newItems.length} new draws (total: ${cache.draws.length})`);
+      }
+
+    } else {
+      // ── Full history fetch ──
+      let page = 1, errors = 0;
+      const allItems = [];
+
+      while (true) {
+        const batch = await fetchCalifBatch(page);
+        if (batch === null) { if (++errors >= 5) break; await delay(1000); continue; }
+        if (batch.length === 0) break;
+        errors = 0;
+
+        allItems.push(...batch);
+        califProgress.done = allItems.length;
+        if (allItems.length % 500 === 0)
+          console.log(`[calif] …${allItems.length} records`);
+
+        page++;
+        await delay(200);
+      }
+
+      cache.draws = allItems.map(califToRecord);
+      cache.latestPeriod = allItems.length > 0 ? parseInt(allItems[0].gNum) : 0;
+      console.log(`[calif] Full fetch done: ${cache.draws.length} draws`);
+    }
+
+    cache.lastUpdated = now;
+    saveCalifCache(cache);
+  } catch (e) {
+    console.error('[calif-update]', e.message);
+  } finally {
+    califUpdating = false;
+    califProgress = { done: cache.draws.length, total: cache.draws.length };
+  }
+
+  return cache.draws;
+}
+
+async function updateCalifInBackground(cache, now) {
+  califProgress = { done: 0, total: 0 };
+  try {
+    const latestPeriod = cache.latestPeriod;
+    let page = 1, errors = 0;
+    const newItems = [];
+    let done = false;
+
+    while (!done) {
+      const batch = await fetchCalifBatch(page);
+      if (batch === null) { if (++errors >= 3) break; await delay(500); continue; }
+      if (batch.length === 0) break;
+      errors = 0;
+
+      for (const item of batch) {
+        if (parseInt(item.gNum) > latestPeriod) newItems.push(item);
+        else { done = true; break; }
+      }
+      page++;
+      await delay(200);
+    }
+
+    if (newItems.length > 0) {
+      cache.draws = [...newItems.map(califToRecord), ...cache.draws];
+      cache.latestPeriod = parseInt(newItems[0].gNum);
+      console.log(`[calif-bg] +${newItems.length} new draws (total: ${cache.draws.length})`);
+    }
+    cache.lastUpdated = now;
+    saveCalifCache(cache);
+    console.log(`[calif-bg] Done.`);
+  } catch (e) {
+    console.error('[calif-bg]', e.message);
+    cache.lastUpdated = now;
+    saveCalifCache(cache);
+  } finally {
+    califUpdating = false;
+    califProgress = { done: cache.draws.length, total: cache.draws.length };
+  }
+}
+
 // ─── Statistics ──────────────────────────────────────────
 
 function computeStats(draws) {
@@ -377,30 +554,38 @@ function predict(draws) {
 
 // ─── API routes ──────────────────────────────────────────
 
-app.get('/api/status', (_, res) => {
-  const c = loadCache();
-  res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating, progress });
+app.get('/api/status', (req, res) => {
+  if (req.query.lottery === 'calif') {
+    const c = loadCalifCache();
+    res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating: califUpdating, progress: califProgress });
+  } else {
+    const c = loadCache();
+    res.json({ total: c.draws.length, lastUpdated: c.lastUpdated, updating, progress });
+  }
 });
 
 app.get('/api/draws', async (req, res) => {
   try {
-    const draws  = await updateData();
-    const limit  = Math.min(parseInt(req.query.limit)  || 100, 10000);
-    const offset = parseInt(req.query.offset) || 0;
+    const isCalif = req.query.lottery === 'calif';
+    const draws   = isCalif ? await updateCalifData() : await updateData();
+    const limit   = Math.min(parseInt(req.query.limit)  || 100, 10000);
+    const offset  = parseInt(req.query.offset) || 0;
     res.json({ total: draws.length, data: draws.slice(offset, offset + limit) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/latest', async (req, res) => {
   try {
-    const draws = await updateData();
+    const isCalif = req.query.lottery === 'calif';
+    const draws   = isCalif ? await updateCalifData() : await updateData();
     res.json(draws[0] || null);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const draws = await updateData();
+    const isCalif = req.query.lottery === 'calif';
+    const draws   = isCalif ? await updateCalifData() : await updateData();
     if (!draws.length) return res.status(503).json({ error: 'No data' });
 
     const { freq, lastSeen, recentFreq } = computeStats(draws);
@@ -428,7 +613,8 @@ app.get('/api/stats', async (req, res) => {
 
 app.get('/api/predict', async (req, res) => {
   try {
-    const draws = await updateData();
+    const isCalif = req.query.lottery === 'calif';
+    const draws   = isCalif ? await updateCalifData() : await updateData();
     if (draws.length < 20) return res.status(503).json({ error: 'Insufficient data' });
     res.json(predict(draws));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -436,10 +622,17 @@ app.get('/api/predict', async (req, res) => {
 
 app.post('/api/refresh', async (req, res) => {
   try {
-    const c = loadCache();
-    c.lastUpdated = 0;
-    saveCache(c);
-    updateData().catch(console.error);
+    if (req.query.lottery === 'calif') {
+      const c = loadCalifCache();
+      c.lastUpdated = 0;
+      saveCalifCache(c);
+      updateCalifData(true).catch(console.error);
+    } else {
+      const c = loadCache();
+      c.lastUpdated = 0;
+      saveCache(c);
+      updateData().catch(console.error);
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -448,8 +641,9 @@ app.post('/api/refresh', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log('\n  ╔══════════════════════════════════════════╗');
-  console.log(`  ║   今彩539 智能分析系統  v1.0              ║`);
+  console.log(`  ║   今彩539 + 加州天天樂  智能分析系統      ║`);
   console.log(`  ║   http://localhost:${PORT}                ║`);
   console.log('  ╚══════════════════════════════════════════╝\n');
   updateData().catch(console.error);
+  updateCalifData().catch(console.error);
 });
