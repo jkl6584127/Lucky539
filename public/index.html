@@ -26,21 +26,25 @@
     <span class="brand-icon">🎯</span>
     <span class="brand-text" id="brandText">今彩539<span class="brand-sub"> 智能分析系統</span></span>
   </div>
+
+  <!-- 桌面版頁籤 (手機隱藏) -->
   <div class="nav-center">
-    <div class="lottery-switcher">
-      <button class="lottery-btn active" data-lottery="539">今彩539</button>
-      <button class="lottery-btn" data-lottery="calif">加州天天樂</button>
-    </div>
-    <div class="nav-divider"></div>
     <button class="nav-tab active" data-section="dashboard">儀表板</button>
     <button class="nav-tab" data-section="analysis">號碼分析</button>
     <button class="nav-tab" data-section="predict">智能預測</button>
     <button class="nav-tab" data-section="history">歷史記錄</button>
   </div>
+
   <div class="nav-right">
+    <!-- 彩券切換 (桌面版) -->
+    <div class="lottery-switcher desktop-only">
+      <button class="lottery-btn active" data-lottery="539">今彩539</button>
+      <button class="lottery-btn" data-lottery="calif">加州天天樂</button>
+    </div>
+    <div class="nav-divider desktop-only"></div>
     <div class="update-badge" id="updateBadge">
       <span class="badge-dot"></span>
-      <span id="updateText">載入中...</span>
+      <span id="updateText" class="badge-label">載入中...</span>
     </div>
     <button class="refresh-btn" id="refreshBtn" title="重新載入最新資料">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -51,6 +55,14 @@
     </button>
   </div>
 </nav>
+
+<!-- 彩券切換列 (手機版獨立一列，桌面隱藏) -->
+<div class="mobile-sub-nav">
+  <div class="lottery-switcher">
+    <button class="lottery-btn active" data-lottery="539">🎯 今彩539</button>
+    <button class="lottery-btn" data-lottery="calif">🌴 加州天天樂</button>
+  </div>
+</div>
 
 <!-- ════ SECTION: Dashboard ════ -->
 <main id="sec-dashboard" class="section active">
@@ -295,6 +307,40 @@
     <div class="loading-sub" id="loadingSub">首次啟動需抓取完整歷史，請稍候</div>
   </div>
 </div>
+
+<!-- 手機版底部頁籤 -->
+<nav class="bottom-nav">
+  <button class="nav-tab active" data-section="dashboard">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+      <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+      <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+      <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+    </svg>
+    <span>儀表板</span>
+  </button>
+  <button class="nav-tab" data-section="analysis">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="20" x2="18" y2="10"></line>
+      <line x1="12" y1="20" x2="12" y2="4"></line>
+      <line x1="6" y1="20" x2="6" y2="14"></line>
+    </svg>
+    <span>分析</span>
+  </button>
+  <button class="nav-tab" data-section="predict">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+    </svg>
+    <span>預測</span>
+  </button>
+  <button class="nav-tab" data-section="history">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </svg>
+    <span>記錄</span>
+  </button>
+</nav>
 
 <script src="js/app.js"></script>
 </body>

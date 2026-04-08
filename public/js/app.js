@@ -57,8 +57,9 @@ document.querySelectorAll('.lottery-btn').forEach(btn => {
     if (btn.dataset.lottery === currentLottery) return;
     currentLottery = btn.dataset.lottery;
 
+    // 同步所有彩券按鈕（桌面 + 手機版）
     document.querySelectorAll('.lottery-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    document.querySelectorAll(`.lottery-btn[data-lottery="${currentLottery}"]`).forEach(b => b.classList.add('active'));
 
     const meta = LOTTERY_META[currentLottery];
     $('brandText').innerHTML = meta.brand;
@@ -81,15 +82,17 @@ document.querySelectorAll('.lottery-btn').forEach(btn => {
 // ─── Navigation ──────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(btn => {
   btn.addEventListener('click', () => {
+    const section = btn.dataset.section;
+    // 同步所有頁籤（桌面 nav-center + 手機 bottom-nav）
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll(`.nav-tab[data-section="${section}"]`).forEach(b => b.classList.add('active'));
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    $('sec-' + btn.dataset.section).classList.add('active');
+    $('sec-' + section).classList.add('active');
 
     // Lazy render on first open
-    if (btn.dataset.section === 'analysis' && statsData)  renderAnalysis();
-    if (btn.dataset.section === 'predict'  && predData)   renderPredictSection();
-    if (btn.dataset.section === 'history'  && allDraws.length) renderHistory();
+    if (section === 'analysis' && statsData)    renderAnalysis();
+    if (section === 'predict'  && predData)     renderPredictSection();
+    if (section === 'history'  && allDraws.length) renderHistory();
   });
 });
 
