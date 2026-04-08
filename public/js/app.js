@@ -71,6 +71,9 @@ document.querySelectorAll('.lottery-btn').forEach(btn => {
     histFilter = '';
     $('searchInput').value = '';
 
+    showLoading(true);
+    $('loadingSub').textContent = '正在切換彩券種類，請稍候…';
+    await pollUntilReady();
     await loadAll();
   });
 });
@@ -153,7 +156,7 @@ function makeBall(num, type = 'latest', delay = 0) {
 
 function renderBalls(containerId, numbers, type) {
   const container = $(containerId);
-  if (!container) return;
+  if (!container || !numbers?.length) return;
   container.innerHTML = '';
   numbers.forEach((n, i) => container.appendChild(makeBall(n, type, i * 80)));
 }
@@ -182,7 +185,8 @@ async function loadAll() {
     if (!statsRes.ok) throw new Error('stats fetch failed');
 
     statsData = await statsRes.json();
-    predData  = await predRes.json();
+    predData  = predRes.ok ? await predRes.json() : null;
+    if (predData && !predData.numbers) predData = null; // 過濾掉 error response
     const latest = await latestRes.json();
     const drawsJson = await drawsRes.json();
     allDraws = drawsJson.data || [];
@@ -236,6 +240,25 @@ function showLoading(visible) {
   else el.classList.add('hidden');
 }
 
+// ─── Poll until server has data ───────────────────────────
+async function pollUntilReady() {
+  let tries = 0;
+  while (tries++ < 120) {
+    try {
+      const r = await fetch(apiQ('/api/status'));
+      const s = await r.json();
+      if (s.total > 0) break;
+      if (s.updating && s.progress && s.progress.total > 0) {
+        const pct = Math.round((s.progress.done / s.progress.total) * 100);
+        $('loadingSub').textContent = `正在抓取歷史資料… ${s.progress.done} / ${s.progress.total} (${pct}%)`;
+      } else {
+        $('loadingSub').textContent = '首次啟動需要約 1-2 分鐘，請稍候…';
+      }
+    } catch (_) {}
+    await delay(2500);
+  }
+}
+
 // ─── Dashboard ────────────────────────────────────────────
 function renderDashboard(latest) {
   // Latest balls
@@ -270,7 +293,7 @@ function renderDashboard(latest) {
 }
 
 function renderHeroPred() {
-  if (!predData) return;
+  if (!predData?.numbers) return;
   renderBalls('predictBalls', predData.numbers, 'pred');
   $('confBadge').textContent = `${predData.confidence}%`;
 }
@@ -775,23 +798,6 @@ $('searchInput').addEventListener('input', e => {
 // ─── Init ─────────────────────────────────────────────────
 (async () => {
   initParticles();
-
-  // Poll until server has data
-  let tries = 0;
-  while (tries++ < 120) {
-    try {
-      const r = await fetch(apiQ('/api/status'));
-      const s = await r.json();
-      if (s.total > 0) break;
-      if (s.updating && s.progress && s.progress.total > 0) {
-        const pct = Math.round((s.progress.done / s.progress.total) * 100);
-        $('loadingSub').textContent = `正在抓取歷史資料… ${s.progress.done} / ${s.progress.total} (${pct}%)`;
-      } else {
-        $('loadingSub').textContent = '首次啟動需要約 2-3 分鐘，請稍候…';
-      }
-    } catch (_) {}
-    await delay(2500);
-  }
-
+  await pollUntilReady();
   await loadAll();
 })();

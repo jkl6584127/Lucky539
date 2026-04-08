@@ -317,35 +317,66 @@ async function updateInBackground(cache, now) {
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── California Fantasy5 fetch ────────────────────────────
+// 資料來源：twlottery.in (年份逐年抓取) + cake.idv.tw (最新一頁增量)
+// 注意：cake.idv.tw 的 ?p= 分頁參數無效，每頁都回傳相同最新資料，
+//       因此全量抓取改用 twlottery.in，增量用 cake.idv.tw 第1頁。
+
+const CALIF_FIRST_YEAR = 2022; // twlottery.in 有效資料起始年
 
 const CALIF_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-  'Accept': 'application/json, */*'
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+  'Accept': 'text/html,application/json,*/*'
 };
 
-async function fetchCalifBatch(page, limit = 100) {
+/** 從 twlottery.in 抓取指定年份的全部開獎紀錄 */
+async function fetchCalifYear(year) {
   try {
-    const url = `https://www.cake.idv.tw/api/lottery?a=history&g=Fantasy5&limit=${limit}&p=${page}`;
-    const { data } = await axios.get(url, { timeout: 15000, headers: CALIF_HEADERS });
-    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-    return (parsed.data?.g || []).filter(x => x.gResult && x.gNum !== undefined);
+    const url = `https://twlottery.in/lotteryCA5/list/${year}`;
+    const { data } = await axios.get(url, { timeout: 20000, headers: CALIF_HEADERS });
+    const match = data.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!match) return null;
+    const json  = JSON.parse(match[1]);
+    const list  = json?.props?.pageProps?.lotteryCA5List || [];
+    return list;
   } catch (e) {
-    console.error(`[calif-batch] page=${page} error: ${e.message}`);
+    console.error(`[calif-year] ${year} error: ${e.message}`);
     return null;
   }
 }
 
-function califToRecord(item) {
+/** 從 cake.idv.tw 抓取最新 100 筆（僅用於增量，不分頁） */
+async function fetchCalifLatest() {
+  try {
+    const url = 'https://www.cake.idv.tw/api/lottery?a=history&g=Fantasy5&limit=100&p=1';
+    const { data } = await axios.get(url, { timeout: 15000, headers: CALIF_HEADERS });
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    return (parsed.data?.g || []).filter(x => x.gResult && x.gNum !== undefined);
+  } catch (e) {
+    console.error(`[calif-latest] error: ${e.message}`);
+    return null;
+  }
+}
+
+/** twlottery.in 的格式 → 統一 record */
+function califYearItemToRecord(item) {
+  const dateStr = item.drawDate ? item.drawDate.slice(0, 10) : '';
+  const numbers = (item.winningNumbers || [])
+    .map(s => parseInt(s))
+    .filter(n => n >= 1 && n <= 39)
+    .sort((a, b) => a - b);
+  return { period: String(item.period), date: dateStr, numbers };
+}
+
+/** cake.idv.tw 的格式 → 統一 record */
+function califLatestItemToRecord(item) {
   const ts   = item.gDate * 1000;
   const d    = new Date(ts);
-  const yyyy = d.getFullYear();
-  const mm   = String(d.getMonth() + 1).padStart(2, '0');
-  const dd   = String(d.getDate()).padStart(2, '0');
-  return {
-    period:  String(item.gNum),
-    date:    `${yyyy}-${mm}-${dd}`,
-    numbers: item.gResult.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= 39).sort((a, b) => a - b)
-  };
+  const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const numbers = item.gResult.split(',')
+    .map(s => parseInt(s.trim()))
+    .filter(n => n >= 1 && n <= 39)
+    .sort((a, b) => a - b);
+  return { period: String(item.gNum), date, numbers };
 }
 
 async function updateCalifData(force = false) {
@@ -364,65 +395,42 @@ async function updateCalifData(force = false) {
   }
 
   califUpdating = true;
-  califProgress = { done: 0, total: 0 };
+  const currentYear = new Date().getFullYear();
+  califProgress = { done: 0, total: currentYear - CALIF_FIRST_YEAR + 1 };
 
   try {
-    console.log(`[calif] Starting fetch…`);
+    console.log(`[calif] Starting full history fetch (${CALIF_FIRST_YEAR}–${currentYear})…`);
+    const allRecords = [];
 
-    if (!empty && !force) {
-      // ── Incremental ──
-      const latestPeriod = cache.latestPeriod;
-      let page = 1, errors = 0;
-      const newItems = [];
-      let done = false;
-
-      while (!done) {
-        const batch = await fetchCalifBatch(page);
-        if (batch === null) { if (++errors >= 3) break; await delay(500); continue; }
-        if (batch.length === 0) break;
-        errors = 0;
-
-        for (const item of batch) {
-          if (parseInt(item.gNum) > latestPeriod) newItems.push(item);
-          else { done = true; break; }
-        }
-        page++;
-        await delay(200);
+    for (let year = currentYear; year >= CALIF_FIRST_YEAR; year--) {
+      const items = await fetchCalifYear(year);
+      if (items === null) {
+        console.warn(`[calif] Failed to fetch year ${year}, skipping`);
+      } else if (items.length === 0) {
+        console.log(`[calif] Year ${year} is empty, stopping`);
+        break;
+      } else {
+        const records = items.map(califYearItemToRecord).filter(r => r.numbers.length === 5);
+        allRecords.push(...records);
+        console.log(`[calif] Year ${year}: ${records.length} records (total: ${allRecords.length})`);
       }
-
-      if (newItems.length > 0) {
-        cache.draws = [...newItems.map(califToRecord), ...cache.draws];
-        cache.latestPeriod = parseInt(newItems[0].gNum);
-        console.log(`[calif] +${newItems.length} new draws (total: ${cache.draws.length})`);
-      }
-
-    } else {
-      // ── Full history fetch ──
-      let page = 1, errors = 0;
-      const allItems = [];
-
-      while (true) {
-        const batch = await fetchCalifBatch(page);
-        if (batch === null) { if (++errors >= 5) break; await delay(1000); continue; }
-        if (batch.length === 0) break;
-        errors = 0;
-
-        allItems.push(...batch);
-        califProgress.done = allItems.length;
-        if (allItems.length % 500 === 0)
-          console.log(`[calif] …${allItems.length} records`);
-
-        page++;
-        await delay(200);
-      }
-
-      cache.draws = allItems.map(califToRecord);
-      cache.latestPeriod = allItems.length > 0 ? parseInt(allItems[0].gNum) : 0;
-      console.log(`[calif] Full fetch done: ${cache.draws.length} draws`);
+      califProgress.done = currentYear - year + 1;
+      await delay(400);
     }
 
-    cache.lastUpdated = now;
+    // Sort newest first and deduplicate by period
+    allRecords.sort((a, b) => parseInt(b.period) - parseInt(a.period));
+    const seen = new Set();
+    cache.draws = allRecords.filter(r => {
+      if (seen.has(r.period)) return false;
+      seen.add(r.period);
+      return true;
+    });
+    cache.latestPeriod = cache.draws.length > 0 ? parseInt(cache.draws[0].period) : 0;
+    cache.lastUpdated  = now;
     saveCalifCache(cache);
+    console.log(`[calif] Full fetch done: ${cache.draws.length} draws`);
+
   } catch (e) {
     console.error('[calif-update]', e.message);
   } finally {
@@ -437,28 +445,18 @@ async function updateCalifInBackground(cache, now) {
   califProgress = { done: 0, total: 0 };
   try {
     const latestPeriod = cache.latestPeriod;
-    let page = 1, errors = 0;
-    const newItems = [];
-    let done = false;
+    const items = await fetchCalifLatest();
+    if (!items) { cache.lastUpdated = now; saveCalifCache(cache); return; }
 
-    while (!done) {
-      const batch = await fetchCalifBatch(page);
-      if (batch === null) { if (++errors >= 3) break; await delay(500); continue; }
-      if (batch.length === 0) break;
-      errors = 0;
+    const newRecords = items
+      .map(califLatestItemToRecord)
+      .filter(r => parseInt(r.period) > latestPeriod && r.numbers.length === 5);
 
-      for (const item of batch) {
-        if (parseInt(item.gNum) > latestPeriod) newItems.push(item);
-        else { done = true; break; }
-      }
-      page++;
-      await delay(200);
-    }
-
-    if (newItems.length > 0) {
-      cache.draws = [...newItems.map(califToRecord), ...cache.draws];
-      cache.latestPeriod = parseInt(newItems[0].gNum);
-      console.log(`[calif-bg] +${newItems.length} new draws (total: ${cache.draws.length})`);
+    if (newRecords.length > 0) {
+      newRecords.sort((a, b) => parseInt(b.period) - parseInt(a.period));
+      cache.draws = [...newRecords, ...cache.draws];
+      cache.latestPeriod = parseInt(newRecords[0].period);
+      console.log(`[calif-bg] +${newRecords.length} new draws (total: ${cache.draws.length})`);
     }
     cache.lastUpdated = now;
     saveCalifCache(cache);
