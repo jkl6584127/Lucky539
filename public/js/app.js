@@ -12,6 +12,9 @@ let predData    = null;
 let histPage    = 1;
 let histFilter  = '';
 let recentN     = 100;      // 使用者自訂分析期數
+let analysisMode = 'recent'; // 'recent' 或 'range'
+let rangeStart   = 1;        // 範圍起始 dex (1=最舊)
+let rangeEnd     = 100;      // 範圍結束 dex (>=start)
 const PAGE_SIZE = 30;
 
 const LOTTERY_META = {
@@ -25,6 +28,27 @@ function apiQ(base, extra = '') {
   const sep = base.includes('?') ? '&' : '?';
   const lq  = currentLottery !== '539' ? `${sep}lottery=${currentLottery}` : '';
   return base + lq + (extra ? (lq ? '&' : sep) + extra : '');
+}
+
+// 依目前模式組裝分析參數
+function analysisQuery() {
+  if (analysisMode === 'range') {
+    return `startDex=${rangeStart}&endDex=${rangeEnd}`;
+  }
+  return `recentN=${recentN}`;
+}
+
+// 取目前分析窗口的顯示標籤,用於圖表/卡片
+//   recent 模式 → "近100期" / "全部"
+//   range  模式 → "第500~1000期"
+function rangeLabel(src = statsData) {
+  if (src && src.mode === 'range' && src.rangeStart && src.rangeEnd) {
+    return `第${src.rangeStart}~${src.rangeEnd}期`;
+  }
+  const total = src ? src.totalDraws : 0;
+  const rn = (src && src.recentN) || recentN;
+  if (total && rn >= total) return '全部';
+  return `近${rn}期`;
 }
 
 let freqChartInst    = null;
@@ -74,9 +98,15 @@ document.querySelectorAll('.lottery-btn').forEach(btn => {
     histPage   = 1;
     histFilter = '';
     recentN    = 100;
+    analysisMode = 'recent';
+    rangeStart = 1;
+    rangeEnd   = 100;
     $('searchInput').value  = '';
     $('recentNInput').value = 100;
     $('recentNSlider').value = 100;
+    $('rangeStartInput').value = '';
+    $('rangeEndInput').value   = '';
+    setActiveSection('modeRecent');
     document.querySelectorAll('.period-quick-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.period-quick-btn[data-n="100"]').classList.add('active');
 
@@ -116,7 +146,7 @@ $('refreshBtn').addEventListener('click', async () => {
 // ─── Regen button ─────────────────────────────────────────
 $('regenBtn').addEventListener('click', async () => {
   try {
-    const r = await fetch(apiQ('/api/predict', `recentN=${recentN}`));
+    const r = await fetch(apiQ('/api/predict', analysisQuery()));
     predData = await r.json();
     renderPredictSection();
     renderHeroPred();
@@ -187,8 +217,8 @@ async function loadAll() {
   try {
     // Parallel fetch
     const [statsRes, predRes, latestRes, drawsRes] = await Promise.all([
-      fetch(apiQ('/api/stats', `recentN=${recentN}`)),
-      fetch(apiQ('/api/predict', `recentN=${recentN}`)),
+      fetch(apiQ('/api/stats', analysisQuery())),
+      fetch(apiQ('/api/predict', analysisQuery())),
       fetch(apiQ('/api/latest')),
       fetch(apiQ('/api/draws', 'limit=10000'))
     ]);
@@ -230,7 +260,7 @@ function schedulePoll() {
       const s = await r.json();
       if (!s.updating) {
         // Check if server has new data
-        const r2 = await fetch(apiQ('/api/stats', `recentN=${recentN}`));
+        const r2 = await fetch(apiQ('/api/stats', analysisQuery()));
         const newStats = await r2.json();
         if (newStats.totalDraws !== statsData.totalDraws) {
           await loadAll();
@@ -323,12 +353,21 @@ function updatePeriodSelector() {
     input.value  = recentN;
   }
 
-  // 更新所有「近N期」標籤
+  // 範圍輸入框: 動態更新 placeholder (最新 dex == totalDraws)
+  $('rangeStartInput').max = total;
+  $('rangeEndInput').max   = total;
+  $('rangeStartInput').placeholder = `最舊 0001`;
+  $('rangeEndInput').placeholder   = `最新 (${total})`;
+
+  // 更新所有分析範圍標籤
   updateRecentLabels();
 }
 
 function updateRecentLabels() {
-  const label = recentN >= statsData.totalDraws ? '全部' : recentN;
+  // .recentN-label 元素顯示整段標籤:「近100期」/「全部」/「第500~1000期」
+  const label = analysisMode === 'range'
+    ? `第${rangeStart}~${rangeEnd}期`
+    : (recentN >= statsData.totalDraws ? '全部' : `近${recentN}期`);
   document.querySelectorAll('.recentN-label').forEach(el => {
     el.textContent = label;
   });
@@ -514,7 +553,7 @@ function buildFreqAllChart() {
           order: 1
         },
         {
-          label: `近${statsData.recentN || recentN}期出現`,
+          label: `${rangeLabel()}出現`,
           data: nums.map(n => n.recentFreq),
           type: 'line',
           borderColor: 'rgba(6,182,212,.8)',
@@ -710,7 +749,7 @@ function renderPredictSection() {
       card.innerHTML = `
         <div class="detail-num">${fmt(d.num)}</div>
         <div class="detail-row">出現次數 <span>${d.freq}</span></div>
-        <div class="detail-row">近期出現 <span>${d.recentFreq}/${predData.recentN || recentN}期</span></div>
+        <div class="detail-row">${rangeLabel(predData)}出現 <span>${d.recentFreq}/${predData.recentN || recentN}期</span></div>
         <div class="detail-row">遺漏值 <span style="color:${d.gap>20?'#ef4444':'#60a5fa'}">${d.gap} 期</span></div>
         <div class="detail-row">綜合評分 <span style="color:#a78bfa">${d.score}</span></div>
         <div class="detail-score" style="width:${Math.min(d.score,100)}%"></div>
@@ -733,7 +772,7 @@ async function renderMultiPred() {
   // Generate 5 different predictions via the API + local variation
   for (let i = 0; i < 5; i++) {
     try {
-      const r = await fetch(apiQ('/api/predict', `recentN=${recentN}`));
+      const r = await fetch(apiQ('/api/predict', analysisQuery()));
       const p = await r.json();
       results.push({ label: labels[i], numbers: p.numbers, conf: p.confidence });
     } catch (_) {
@@ -868,6 +907,8 @@ $('applyRecentN').addEventListener('click', async () => {
   if (isNaN(v) || v < 10) v = 10;
   if (v > total) v = total;
   recentN = v;
+  analysisMode = 'recent';
+  setActiveSection('modeRecent');
   $('recentNInput').value  = v;
   $('recentNSlider').value = v;
 
@@ -893,6 +934,8 @@ document.querySelectorAll('.period-quick-btn').forEach(btn => {
     if (n === 0) n = total;  // 「全部期數」
     if (n > total) n = total;
     recentN = n;
+    analysisMode = 'recent';
+    setActiveSection('modeRecent');
     $('recentNInput').value  = n;
     $('recentNSlider').value = n;
 
@@ -900,6 +943,53 @@ document.querySelectorAll('.period-quick-btn').forEach(btn => {
     btn.classList.add('active');
 
     await loadAll();
+  });
+});
+
+// ─── 模式區塊切換 (上下互斥) ────────────────────────────
+function setActiveSection(id) {
+  document.querySelectorAll('.period-mode-section').forEach(s => {
+    s.classList.toggle('active', s.id === id);
+  });
+}
+
+document.querySelectorAll('.period-mode-section').forEach(section => {
+  section.addEventListener('click', () => {
+    if (section.classList.contains('active')) return;
+    setActiveSection(section.id);
+    // 注意:純切換視覺,不發 API,使用者要按「套用」才會載入
+  });
+});
+
+// ─── 自訂範圍套用 ───────────────────────────────────────
+$('applyRange').addEventListener('click', async () => {
+  const total = statsData ? statsData.totalDraws : 10000;
+  let s = parseInt($('rangeStartInput').value);
+  let e = parseInt($('rangeEndInput').value);
+  if (isNaN(s)) s = 1;
+  if (isNaN(e)) e = total;
+  if (s < 1) s = 1;
+  if (e > total) e = total;
+  if (s > e) { const t = s; s = e; e = t; }  // 自動換位
+  if (e - s + 1 < 10) {
+    // 切片至少 10 期才有統計意義
+    if (e + 9 <= total) e = s + 9;
+    else                s = Math.max(1, e - 9);
+  }
+  rangeStart = s;
+  rangeEnd   = e;
+  analysisMode = 'range';
+  setActiveSection('modeRange');
+  $('rangeStartInput').value = s;
+  $('rangeEndInput').value   = e;
+
+  await loadAll();
+});
+
+// 範圍輸入按 Enter 也套用
+['rangeStartInput', 'rangeEndInput'].forEach(id => {
+  $(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('applyRange').click();
   });
 });
 

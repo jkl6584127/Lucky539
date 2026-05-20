@@ -828,6 +828,72 @@ body {
   flex-direction: column;
   gap: 14px;
 }
+
+/* ── Period mode sections (上下兩區塊互斥) ───────────── */
+.period-mode-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: rgba(255,255,255,0.02);
+  transition: opacity .2s, border-color .2s, background .2s;
+}
+.period-mode-section:last-child { margin-bottom: 0; }
+
+.period-mode-section.active {
+  border-color: var(--purple);
+  background: rgba(124,58,237,0.06);
+  box-shadow: 0 0 0 1px rgba(124,58,237,0.18) inset;
+}
+
+.period-mode-section:not(.active) {
+  opacity: .42;
+  cursor: pointer;
+}
+.period-mode-section:not(.active):hover {
+  opacity: .65;
+  border-color: rgba(124,58,237,0.4);
+}
+.period-mode-section:not(.active) .period-mode-body {
+  pointer-events: none;
+  user-select: none;
+}
+
+.period-mode-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sub);
+}
+.period-mode-section.active .period-mode-title {
+  color: var(--purple2);
+}
+.period-mode-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  flex-shrink: 0;
+  transition: all .2s;
+}
+.period-mode-section.active .period-mode-dot {
+  border-color: var(--purple);
+  background: var(--purple);
+  box-shadow: 0 0 8px rgba(124,58,237,0.5);
+}
+
+.period-mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.period-range-group { flex-wrap: wrap; }
+.period-range-group .period-input { width: 140px; }
 .period-input-group {
   display: flex;
   align-items: center;
@@ -1058,8 +1124,10 @@ body {
   /* 期數設定手機適配 */
   .period-input-group { flex-wrap: wrap; }
   .period-input { width: 100px; }
+  .period-range-group .period-input { width: 110px; }
   .period-quick-btns { gap: 6px; }
   .period-quick-btn { padding: 5px 10px; font-size: 12px; }
+  .period-mode-section { padding: 12px; }
 
   /* 球縮小一點 */
   .ball { width: 50px; height: 50px; font-size: 18px; }

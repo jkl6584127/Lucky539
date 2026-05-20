@@ -648,7 +648,10 @@ async function updateCalifInBackground(cache, now) {
 
 // ─── Statistics ──────────────────────────────────────────
 
-function computeStats(draws, maxNum = 39, recentN = 100) {
+// recentSpec: { kind:'recent', n } 或 { kind:'range', sliceStart, sliceEnd }
+//   - recent: 取 draws.slice(0, n) 當「近期」窗口
+//   - range : 取 draws.slice(sliceStart, sliceEnd) 當「範圍」窗口
+function computeStats(draws, maxNum = 39, recentSpec = { kind: 'recent', n: 100 }) {
   const size     = maxNum + 1;
   const freq       = Array(size).fill(0);
   const lastSeen   = Array(size).fill(-1);
@@ -663,25 +666,31 @@ function computeStats(draws, maxNum = 39, recentN = 100) {
     });
   });
 
-  const recentSlice = Math.min(recentN, draws.length);
-  draws.slice(0, recentSlice).forEach(d => d.numbers.forEach(n => {
+  let recentDraws;
+  if (recentSpec.kind === 'range') {
+    recentDraws = draws.slice(recentSpec.sliceStart, recentSpec.sliceEnd);
+  } else {
+    const n = Math.min(recentSpec.n || 100, draws.length);
+    recentDraws = draws.slice(0, n);
+  }
+  recentDraws.forEach(d => d.numbers.forEach(n => {
     if (n >= 1 && n <= maxNum) recentFreq[n]++;
   }));
 
   for (let i = 1; i <= maxNum; i++) if (lastSeen[i] === -1) lastSeen[i] = draws.length;
 
-  return { freq, lastSeen, recentFreq, recentSlice };
+  return { freq, lastSeen, recentFreq, recentSlice: recentDraws.length };
 }
 
 // ─── Prediction ──────────────────────────────────────────
 
-function predict(draws, maxNum = 39, numsPerDraw = 5, recentN = 100) {
+function predict(draws, maxNum = 39, numsPerDraw = 5, recentSpec = { kind: 'recent', n: 100 }) {
   if (draws.length < 20) {
     const fallback = Array.from({ length: numsPerDraw }, (_, i) => Math.round((i + 1) * maxNum / (numsPerDraw + 1)));
     return { numbers: fallback, confidence: 0, details: [] };
   }
 
-  const { freq, lastSeen, recentFreq, recentSlice } = computeStats(draws, maxNum, recentN);
+  const { freq, lastSeen, recentFreq, recentSlice } = computeStats(draws, maxNum, recentSpec);
   const total   = draws.length;
   const expFreq = (total * numsPerDraw) / maxNum;
   const expR100 = (recentSlice * numsPerDraw) / maxNum;
@@ -737,6 +746,28 @@ function predict(draws, maxNum = 39, numsPerDraw = 5, recentN = 100) {
 
 // ─── API routes ──────────────────────────────────────────
 
+// 解析使用者送來的分析範圍。回傳 recentSpec 給 computeStats / predict 使用。
+// query 參數兩種:
+//   1) recentN=N             → 近 N 期 (從最新算)
+//   2) startDex=A&endDex=B   → 指定 dex 範圍 (A、B 為 1-based,1=最舊,total=最新)
+function parseRecentSpec(req, draws) {
+  const total    = draws.length;
+  const startDex = parseInt(req.query.startDex);
+  const endDex   = parseInt(req.query.endDex);
+  if (!isNaN(startDex) && !isNaN(endDex) && startDex >= 1 && endDex >= startDex && endDex <= total) {
+    // draws[i].dex = total - i  → dex=endDex 對應 index = total-endDex
+    return {
+      kind: 'range',
+      startDex,
+      endDex,
+      sliceStart: total - endDex,
+      sliceEnd:   total - startDex + 1
+    };
+  }
+  const n = Math.max(1, Math.min(parseInt(req.query.recentN) || 100, total));
+  return { kind: 'recent', n };
+}
+
 // Helper: resolve draws + lottery meta from request
 async function resolveDraws(req, force = false) {
   const type = req.query.lottery || '539';
@@ -789,10 +820,8 @@ app.get('/api/stats', async (req, res) => {
     const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
     if (!draws.length) return res.status(503).json({ error: 'No data' });
 
-    // recentN: 使用者自訂分析期數，上限為歷史總期數
-    const recentN = Math.max(1, Math.min(parseInt(req.query.recentN) || 100, draws.length));
-
-    const { freq, lastSeen, recentFreq, recentSlice } = computeStats(draws, maxNum, recentN);
+    const recentSpec = parseRecentSpec(req, draws);
+    const { freq, lastSeen, recentFreq, recentSlice } = computeStats(draws, maxNum, recentSpec);
     const numbers = [];
     for (let i = 1; i <= maxNum; i++) {
       numbers.push({
@@ -807,6 +836,9 @@ app.get('/api/stats', async (req, res) => {
     res.json({
       totalDraws: draws.length,
       recentN:    recentSlice,
+      mode:       recentSpec.kind,
+      rangeStart: recentSpec.kind === 'range' ? recentSpec.startDex : null,
+      rangeEnd:   recentSpec.kind === 'range' ? recentSpec.endDex   : null,
       maxNum,
       numsPerDraw,
       numbers,
@@ -822,8 +854,12 @@ app.get('/api/predict', async (req, res) => {
   try {
     const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
     if (draws.length < 20) return res.status(503).json({ error: 'Insufficient data' });
-    const recentN = Math.max(1, Math.min(parseInt(req.query.recentN) || 100, draws.length));
-    res.json(predict(draws, maxNum, numsPerDraw, recentN));
+    const recentSpec = parseRecentSpec(req, draws);
+    const result = predict(draws, maxNum, numsPerDraw, recentSpec);
+    result.mode       = recentSpec.kind;
+    result.rangeStart = recentSpec.kind === 'range' ? recentSpec.startDex : null;
+    result.rangeEnd   = recentSpec.kind === 'range' ? recentSpec.endDex   : null;
+    res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

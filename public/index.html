@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
 
@@ -146,25 +146,51 @@
       <div class="card-title" style="margin:0">分析期數設定</div>
       <div class="period-setting-hint">設定 AI 分析與統計使用的歷史期數範圍（上限為該彩券歷史總期數）</div>
     </div>
-    <div class="period-setting-body">
-      <div class="period-input-group">
-        <label class="period-label" for="recentNInput">分析近</label>
-        <input type="number" id="recentNInput" class="period-input" min="10" value="100">
-        <span class="period-label">期</span>
-        <button class="period-apply-btn" id="applyRecentN">套用</button>
+
+    <!-- 模式一: 分析近 N 期 -->
+    <div class="period-mode-section active" id="modeRecent" data-mode="recent">
+      <div class="period-mode-title">
+        <span class="period-mode-dot"></span>
+        <span class="period-mode-label">分析近 N 期</span>
       </div>
-      <div class="period-slider-group">
-        <input type="range" id="recentNSlider" class="period-slider" min="10" value="100">
-        <div class="period-range-labels">
-          <span>10</span>
-          <span id="periodMaxLabel">─</span>
+      <div class="period-mode-body">
+        <div class="period-input-group">
+          <label class="period-label" for="recentNInput">分析近</label>
+          <input type="number" id="recentNInput" class="period-input" min="10" value="100">
+          <span class="period-label">期</span>
+          <button class="period-apply-btn" id="applyRecentN">套用</button>
+        </div>
+        <div class="period-slider-group">
+          <input type="range" id="recentNSlider" class="period-slider" min="10" value="100">
+          <div class="period-range-labels">
+            <span>10</span>
+            <span id="periodMaxLabel">─</span>
+          </div>
+        </div>
+        <div class="period-quick-btns" id="periodQuickBtns">
+          <button class="period-quick-btn active" data-n="100">近100期</button>
+          <button class="period-quick-btn" data-n="500">近500期</button>
+          <button class="period-quick-btn" data-n="1000">近1000期</button>
+          <button class="period-quick-btn" data-n="0">全部期數</button>
         </div>
       </div>
-      <div class="period-quick-btns" id="periodQuickBtns">
-        <button class="period-quick-btn active" data-n="100">近100期</button>
-        <button class="period-quick-btn" data-n="500">近500期</button>
-        <button class="period-quick-btn" data-n="1000">近1000期</button>
-        <button class="period-quick-btn" data-n="0">全部期數</button>
+    </div>
+
+    <!-- 模式二: 自訂範圍 -->
+    <div class="period-mode-section" id="modeRange" data-mode="range">
+      <div class="period-mode-title">
+        <span class="period-mode-dot"></span>
+        <span class="period-mode-label">自訂範圍</span>
+      </div>
+      <div class="period-mode-body">
+        <div class="period-input-group period-range-group">
+          <span class="period-label">第</span>
+          <input type="number" id="rangeStartInput" class="period-input" placeholder="最舊 0001" min="1">
+          <span class="period-label">期 ~ 第</span>
+          <input type="number" id="rangeEndInput" class="period-input" placeholder="最新 (─)" min="1">
+          <span class="period-label">期</span>
+          <button class="period-apply-btn" id="applyRange">套用</button>
+        </div>
       </div>
     </div>
   </div>
@@ -188,11 +214,11 @@
   <!-- ── Hot / Cold row ── -->
   <div class="chart-row">
     <div class="card">
-      <div class="card-title">🔥 近<span class="recentN-label">100</span>期熱門號碼 Top 10</div>
+      <div class="card-title">🔥 <span class="recentN-label">近100期</span>熱門號碼 Top 10</div>
       <div class="num-pills" id="hotNums"></div>
     </div>
     <div class="card">
-      <div class="card-title">❄️ 近<span class="recentN-label">100</span>期冷門號碼 Bottom 10</div>
+      <div class="card-title">❄️ <span class="recentN-label">近100期</span>冷門號碼 Bottom 10</div>
       <div class="num-pills" id="coldNums"></div>
     </div>
   </div>
@@ -250,7 +276,7 @@
             <th>號碼</th>
             <th>出現次數</th>
             <th>出現率 %</th>
-            <th>近<span class="recentN-label">100</span>期出現</th>
+            <th><span class="recentN-label">近100期</span>出現</th>
             <th>距上次出現 (期)</th>
             <th>熱度</th>
           </tr>
@@ -375,6 +401,6 @@
   </button>
 </nav>
 
-<script src="js/app.js?v=4"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>
