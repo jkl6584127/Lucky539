@@ -209,10 +209,13 @@ async function fetchPilioBatch(kind, index) {
 
 function pilioToRecord(item, maxNum) {
   const nums = item.num.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= maxNum);
+  const sp   = parseInt(String(item.sp || '').trim());
   return {
     period:  String(item.dex),
     date:    parseDate(item.date),
-    numbers: nums.sort((a, b) => a - b)
+    numbers: nums.sort((a, b) => a - b),
+    // 特別號:大樂透、六合彩才有 (1~maxNum);無效或缺失時為 null
+    special: !isNaN(sp) && sp >= 1 && sp <= maxNum ? sp : null
   };
 }
 
@@ -882,6 +885,14 @@ app.post('/api/refresh', async (req, res) => {
 
 // ─── Start ───────────────────────────────────────────────
 
+// 既有 pilio cache 若缺 special 欄位,啟動時觸發強制重抓 (補上特別號)
+function pilioCacheNeedsMigration(cfg) {
+  try {
+    const cache = loadPilioCache(cfg.cacheFile);
+    return cache.draws.length > 0 && cache.draws[0].special === undefined;
+  } catch { return false; }
+}
+
 app.listen(PORT, () => {
   console.log('\n  ╔══════════════════════════════════════════╗');
   console.log(`  ║  539 / 加州 / 大樂透 / 六合彩 智能分析   ║`);
@@ -889,6 +900,13 @@ app.listen(PORT, () => {
   console.log('  ╚══════════════════════════════════════════╝\n');
   updateData().catch(console.error);
   updateCalifData().catch(console.error);
-  updatePilioData('lotto').catch(console.error);
-  updatePilioData('mark6').catch(console.error);
+
+  for (const key of ['lotto', 'mark6']) {
+    if (pilioCacheNeedsMigration(PILIO_CFGS[key])) {
+      console.log(`[${key}] cache 缺 special 欄位,強制重抓補資料...`);
+      updatePilioData(key, true).catch(console.error);
+    } else {
+      updatePilioData(key).catch(console.error);
+    }
+  }
 });

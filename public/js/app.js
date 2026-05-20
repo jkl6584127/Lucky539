@@ -195,11 +195,19 @@ function makeBall(num, type = 'latest', delay = 0) {
   return el;
 }
 
-function renderBalls(containerId, numbers, type) {
+function renderBalls(containerId, numbers, type, special = null) {
   const container = $(containerId);
   if (!container || !numbers?.length) return;
   container.innerHTML = '';
   numbers.forEach((n, i) => container.appendChild(makeBall(n, type, i * 80)));
+  // 特別號:在主號後加分隔符 + 紅球
+  if (special != null) {
+    const sep = document.createElement('span');
+    sep.className = 'ball-separator';
+    sep.textContent = '+';
+    container.appendChild(sep);
+    container.appendChild(makeBall(special, `${type} special`, numbers.length * 80));
+  }
 }
 
 // ─── Update badge ─────────────────────────────────────────
@@ -304,7 +312,7 @@ async function pollUntilReady() {
 function renderDashboard(latest) {
   // Latest balls
   if (latest) {
-    renderBalls('latestBalls', latest.numbers, 'latest');
+    renderBalls('latestBalls', latest.numbers, 'latest', latest.special);
     $('latestMeta').textContent = `${fmtPeriod(latest.period)} | ${latest.date}`;
     $('latestSum').textContent  = `總和: ${latest.numbers.reduce((a, b) => a + b, 0)}`;
   }
@@ -831,12 +839,15 @@ function renderHistoryPage(draws, page) {
     const ballsHtml = draw.numbers.map(n =>
       `<div class="mini-ball">${fmt(n)}</div>`
     ).join('');
+    const specialHtml = (draw.special != null)
+      ? `<span class="mini-ball-sep">+</span><div class="mini-ball special">${fmt(draw.special)}</div>`
+      : '';
 
     tr.innerHTML = `
       <td style="color:var(--muted);font-size:12px">${start + i + 1}</td>
       <td style="font-size:12px;color:var(--sub);line-height:1.5">${fmtPeriod(draw.period)}</td>
       <td style="font-size:13px;color:var(--sub)">${draw.date || '─'}</td>
-      <td><div class="history-balls">${ballsHtml}</div></td>
+      <td><div class="history-balls">${ballsHtml}${specialHtml}</div></td>
       <td style="font-family:Orbitron,monospace;font-size:14px;font-weight:700;color:var(--gold)">${sum}</td>
     `;
     tbody.appendChild(tr);
@@ -993,9 +1004,71 @@ $('applyRange').addEventListener('click', async () => {
   });
 });
 
+// ─── 卡片拖曳排序 (SortableJS) ─────────────────────────
+// 每頁可拖的卡片直接是 .section 的子元素 (.card / .hero-row / .kpi-grid / .chart-row)
+// 順序存到 localStorage,每頁獨立。所有彩券共用同一份排列。
+const SORTABLE_SECTIONS  = ['dashboard', 'analysis', 'predict', 'history'];
+const DRAGGABLE_SELECTOR = '.card, .hero-row, .kpi-grid, .chart-row';
+const SORT_STORAGE_KEY   = id => `lucky539-cardOrder-${id}`;
+
+function initSortable() {
+  if (typeof Sortable === 'undefined') {
+    console.warn('SortableJS 未載入,拖曳功能停用');
+    return;
+  }
+
+  SORTABLE_SECTIONS.forEach(secId => {
+    const sec = $('sec-' + secId);
+    if (!sec) return;
+
+    // 為可拖元素分配穩定 ID + 插入拖曳把手
+    Array.from(sec.children).forEach((el, idx) => {
+      if (!el.matches(DRAGGABLE_SELECTOR)) return;
+      if (!el.dataset.cardId) el.dataset.cardId = `${secId}-${idx}`;
+      if (!el.querySelector(':scope > .drag-handle')) {
+        const h = document.createElement('div');
+        h.className = 'drag-handle';
+        h.title = '拖曳排序';
+        el.prepend(h);
+      }
+    });
+
+    // 套用儲存的順序
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY(secId)) || '[]');
+    if (saved.length) {
+      const byId = new Map();
+      Array.from(sec.children).forEach(el => {
+        if (el.dataset.cardId) byId.set(el.dataset.cardId, el);
+      });
+      saved.forEach(id => {
+        const el = byId.get(id);
+        if (el) sec.appendChild(el);
+      });
+    }
+
+    // 初始化 Sortable
+    Sortable.create(sec, {
+      draggable: DRAGGABLE_SELECTOR,
+      handle:    '.drag-handle',
+      animation: 200,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      dragClass:  'sortable-drag',
+      forceFallback: false,
+      onEnd: () => {
+        const order = Array.from(sec.children)
+          .filter(el => el.matches(DRAGGABLE_SELECTOR) && el.dataset.cardId)
+          .map(el => el.dataset.cardId);
+        localStorage.setItem(SORT_STORAGE_KEY(secId), JSON.stringify(order));
+      }
+    });
+  });
+}
+
 // ─── Init ─────────────────────────────────────────────────
 (async () => {
   initParticles();
+  initSortable();
   await pollUntilReady();
   await loadAll();
 })();
