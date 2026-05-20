@@ -20,6 +20,7 @@ const PAGE_SIZE = 30;
 const LOTTERY_META = {
   '539':   { name: '今彩539',   icon: '🎯', brand: '今彩539<span class="brand-sub"> 智能分析系統</span>' },
   'lotto': { name: '大樂透',    icon: '🎰', brand: '大樂透<span class="brand-sub"> 智能分析系統</span>' },
+  'super': { name: '威力彩',    icon: '⚡', brand: '威力彩<span class="brand-sub"> 智能分析系統</span>' },
   'mark6': { name: '六合彩',    icon: '🀄', brand: '六合彩<span class="brand-sub"> 智能分析系統</span>' },
   'calif': { name: '加州天天樂', icon: '🌴', brand: '加州天天樂<span class="brand-sub"> 智能分析系統</span>' },
 };

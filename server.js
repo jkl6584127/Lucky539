@@ -11,14 +11,17 @@ const CALIF_CACHE_FILE = path.join(DATA_DIR, 'lotteryCalif.json');
 const CACHE_TTL        = 30 * 60 * 1000; // 30 minutes
 
 // ─── Generic pilio lottery config ────────────────────────
-// 大樂透(lto) 和 六合彩(ltohk) 共用同一套 pilio 抓取邏輯
+// 大樂透 / 六合彩 / 威力彩 共用同一套 pilio 抓取邏輯
+// specialMax: 特別號上限 (威力彩第二區 1-8;其他與 maxNum 相同)
 const PILIO_CFGS = {
-  lotto: { kind: 'ltobig', maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryLotto.json') },
-  mark6: { kind: 'ltohk', maxNum: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryMark6.json') },
+  lotto: { kind: 'ltobig', maxNum: 49, specialMax: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryLotto.json') },
+  mark6: { kind: 'ltohk',  maxNum: 49, specialMax: 49, numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotteryMark6.json') },
+  super: { kind: 'lto',    maxNum: 38, specialMax: 8,  numsPerDraw: 6, cacheFile: path.join(DATA_DIR, 'lotterySuper.json') },
 };
 const pilioState = {
   lotto: { updating: false, progress: { done: 0, total: 0 } },
   mark6: { updating: false, progress: { done: 0, total: 0 } },
+  super: { updating: false, progress: { done: 0, total: 0 } },
 };
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -207,15 +210,15 @@ async function fetchPilioBatch(kind, index) {
   }
 }
 
-function pilioToRecord(item, maxNum) {
+function pilioToRecord(item, maxNum, specialMax = maxNum) {
   const nums = item.num.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= maxNum);
   const sp   = parseInt(String(item.sp || '').trim());
   return {
     period:  String(item.dex),
     date:    parseDate(item.date),
     numbers: nums.sort((a, b) => a - b),
-    // 特別號:大樂透、六合彩才有 (1~maxNum);無效或缺失時為 null
-    special: !isNaN(sp) && sp >= 1 && sp <= maxNum ? sp : null
+    // 特別號:大樂透/六合彩 (1~49) 或威力彩第二區 (1~8);無效或缺失時為 null
+    special: !isNaN(sp) && sp >= 1 && sp <= specialMax ? sp : null
   };
 }
 
@@ -265,7 +268,7 @@ async function updatePilioData(key, force = false) {
         await delay(150);
       }
 
-      cache.draws     = allItems.map(r => pilioToRecord(r, cfg.maxNum));
+      cache.draws     = allItems.map(r => pilioToRecord(r, cfg.maxNum, cfg.specialMax));
       cache.latestDex = maxIndex - 1;
       cache.lastUpdated = now;
       savePilioCache(cfg.cacheFile, cache);
@@ -288,7 +291,7 @@ async function updatePilioData(key, force = false) {
       }
 
       if (newItems.length > 0) {
-        cache.draws     = [...newItems.map(r => pilioToRecord(r, cfg.maxNum)), ...cache.draws];
+        cache.draws     = [...newItems.map(r => pilioToRecord(r, cfg.maxNum, cfg.specialMax)), ...cache.draws];
         cache.latestDex = maxIndex - 1;
         console.log(`[${key}] +${newItems.length} new (total: ${cache.draws.length})`);
       }
@@ -328,7 +331,7 @@ async function updatePilioBackground(key, cache, now) {
         await delay(100);
       }
       if (newItems.length > 0) {
-        cache.draws     = [...newItems.map(r => pilioToRecord(r, cfg.maxNum)), ...cache.draws];
+        cache.draws     = [...newItems.map(r => pilioToRecord(r, cfg.maxNum, cfg.specialMax)), ...cache.draws];
         cache.latestDex = maxIndex - 1;
         console.log(`[${key}-bg] +${newItems.length} (total: ${cache.draws.length})`);
       }
@@ -895,13 +898,13 @@ function pilioCacheNeedsMigration(cfg) {
 
 app.listen(PORT, () => {
   console.log('\n  ╔══════════════════════════════════════════╗');
-  console.log(`  ║  539 / 加州 / 大樂透 / 六合彩 智能分析   ║`);
+  console.log(`  ║  539 / 加州 / 大樂透 / 六合彩 / 威力彩    ║`);
   console.log(`  ║   http://localhost:${PORT}                ║`);
   console.log('  ╚══════════════════════════════════════════╝\n');
   updateData().catch(console.error);
   updateCalifData().catch(console.error);
 
-  for (const key of ['lotto', 'mark6']) {
+  for (const key of ['lotto', 'mark6', 'super']) {
     if (pilioCacheNeedsMigration(PILIO_CFGS[key])) {
       console.log(`[${key}] cache 缺 special 欄位,強制重抓補資料...`);
       updatePilioData(key, true).catch(console.error);
