@@ -626,6 +626,7 @@ function renderAnalysis() {
   buildRangeChart();
   buildSumChart();
   buildStatsTable();
+  buildSpecialStatsTable();
 }
 
 function buildFreqAllChart() {
@@ -821,6 +822,53 @@ function buildStatsTable() {
   });
 }
 
+// 特別號詳細統計表 (分析頁) — 只在大樂透/六合彩/威力彩顯示
+function buildSpecialStatsTable() {
+  const card = $('specialStatsCard');
+  if (!card) return;
+  if (!statsData?.specialMax || !statsData.specialNumbers) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  const tbody   = $('specialStatsBody');
+  const sNums   = statsData.specialNumbers;
+  const maxFreq = statsData.specialMaxFreq || Math.max(...sNums.map(n => n.freq), 1);
+  const sMax    = statsData.specialMax;
+  const sRn     = statsData.recentN || recentN;
+  // 特別號每期 1 顆,期望值 = recentN / specialMax
+  const expRecent = (sRn / sMax) || 1;
+
+  tbody.innerHTML = '';
+  sNums.forEach(n => {
+    const hotness = n.recentFreq / expRecent;
+    let badge;
+    if (hotness > 1.3)      badge = '<span class="badge-hot">熱門</span>';
+    else if (hotness < 0.7) badge = '<span class="badge-cold">冷門</span>';
+    else                    badge = '<span class="badge-warm">正常</span>';
+
+    const barPct = Math.round((n.freq / maxFreq) * 100);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div style="width:32px;height:32px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#fecaca,#b91c1c 80%);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;font-family:Orbitron,monospace">${fmt(n.num)}</div>
+      </div></td>
+      <td><strong>${n.freq.toLocaleString()}</strong></td>
+      <td>${n.pct}%</td>
+      <td>${n.recentFreq} 次</td>
+      <td style="color:${n.gap > 30 ? '#ef4444' : n.gap > 15 ? '#f59e0b' : '#60a5fa'}">${n.gap} 期</td>
+      <td>
+        <div class="heat-bar-wrap">
+          <div class="heat-bar" style="width:${barPct}px;background:linear-gradient(90deg,rgba(185,28,28,.7),rgba(239,68,68,.4))"></div>
+          ${badge}
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 // ─── Prediction section ───────────────────────────────────
 function renderPredictSection() {
   if (!predData || !$('sec-predict').classList.contains('active')) return;
@@ -867,8 +915,109 @@ function renderPredictSection() {
     });
   }
 
+  // 預測特別號詳細卡 (大樂透/六合彩/威力彩才顯示)
+  renderSpecialDetailCard();
+
+  // 五不出牌 (所有彩券都顯示)
+  renderNotOutCard();
+
   // Multi predictions
   renderMultiPred();
+}
+
+// 預測特別號詳細分析卡 (預測頁)
+function renderSpecialDetailCard() {
+  const card = $('specialDetailCard');
+  if (!card) return;
+  const sd = predData?.specialDetail;
+  if (!sd || predData.special == null) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  const body = $('specialDetailBody');
+  body.innerHTML = '';
+
+  // 大紅球
+  const ballWrap = document.createElement('div');
+  ballWrap.className = 'special-detail-ball';
+  const ball = makeBall(sd.num, 'pred special', 0);
+  ball.style.width = '80px';
+  ball.style.height = '80px';
+  ball.style.fontSize = '28px';
+  ballWrap.appendChild(ball);
+  body.appendChild(ballWrap);
+
+  // 統計資訊
+  const info = document.createElement('div');
+  info.className = 'special-detail-info';
+  info.innerHTML = `
+    <div class="detail-row">出現次數 <span>${sd.freq}</span></div>
+    <div class="detail-row">${rangeLabel(predData)}出現 <span>${sd.recentFreq} 次</span></div>
+    <div class="detail-row">距上次出現 <span>${sd.gap} 期</span></div>
+    <div class="detail-row">綜合評分 <span>${sd.score}</span></div>
+  `;
+  body.appendChild(info);
+}
+
+// 五不出牌卡 (預測頁)
+function renderNotOutCard() {
+  if (!predData?.notNumbers) return;
+
+  const ballsEl = $('notOutBalls');
+  ballsEl.innerHTML = '';
+  predData.notNumbers.forEach((n, i) => {
+    const b = makeBall(n, 'not-out', i * 80);
+    b.style.width = '54px';
+    b.style.height = '54px';
+    b.style.fontSize = '18px';
+    ballsEl.appendChild(b);
+  });
+  // 反向特別號:紅色球放最後
+  if (predData.notSpecial != null) {
+    const sep = document.createElement('span');
+    sep.className = 'ball-separator';
+    sep.textContent = '+';
+    ballsEl.appendChild(sep);
+    const b = makeBall(predData.notSpecial, 'not-out special', predData.notNumbers.length * 80);
+    b.style.width = '54px';
+    b.style.height = '54px';
+    b.style.fontSize = '18px';
+    ballsEl.appendChild(b);
+  }
+
+  // 細項
+  const grid = $('notOutDetails');
+  grid.innerHTML = '';
+  if (predData.notNumberDetails) {
+    predData.notNumberDetails.forEach(d => {
+      const card = document.createElement('div');
+      card.className = 'detail-card';
+      card.innerHTML = `
+        <div class="detail-num">${fmt(d.num)}</div>
+        <div class="detail-row">出現次數 <span>${d.freq}</span></div>
+        <div class="detail-row">${rangeLabel(predData)}出現 <span>${d.recentFreq} 次</span></div>
+        <div class="detail-row">距上次出現 <span style="color:${d.gap>20?'#60a5fa':'#94a3b8'}">${d.gap} 期</span></div>
+        <div class="detail-row">綜合評分 <span style="color:#60a5fa">${d.score}</span></div>
+        <div class="detail-score" style="width:${Math.min(d.score,100)}%"></div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+  if (predData.notSpecialDetail) {
+    const d = predData.notSpecialDetail;
+    const card = document.createElement('div');
+    card.className = 'detail-card special-out';
+    card.innerHTML = `
+      <div class="detail-num">${fmt(d.num)} <span style="font-size:11px;color:var(--muted);font-weight:400">特</span></div>
+      <div class="detail-row">出現次數 <span>${d.freq}</span></div>
+      <div class="detail-row">${rangeLabel(predData)}出現 <span>${d.recentFreq} 次</span></div>
+      <div class="detail-row">距上次出現 <span>${d.gap} 期</span></div>
+      <div class="detail-row">綜合評分 <span>${d.score}</span></div>
+      <div class="detail-score" style="width:${Math.min(d.score,100)}%"></div>
+    `;
+    grid.appendChild(card);
+  }
 }
 
 async function renderMultiPred() {

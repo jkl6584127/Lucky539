@@ -799,25 +799,83 @@ function predict(draws, maxNum = 39, numsPerDraw = 5, recentSpec = { kind: 'rece
   const avgScore   = selected.reduce((s, n) => s + scores[n], 0) / numsPerDraw;
   const confidence = Math.min(Math.round(avgScore * 45 + 20), 92);
 
-  // 特別號預測:大樂透/六合彩 (specialMax==maxNum) 需排除已選主號避免重複
-  let special = null;
+  const buildMainDetail = n => ({
+    num:        n,
+    freq:       freq[n],
+    gap:        lastSeen[n],
+    recentFreq: recentFreq[n],
+    score:      Math.round(scores[n] * 100)
+  });
+
+  // 五不出牌:分數最低的 5 個主號
+  const ascRanked = [...ranked].sort((a, b) => a.score - b.score);
+  const notNumbers       = ascRanked.slice(0, 5).map(x => x.num).sort((a, b) => a - b);
+  const notNumberDetails = notNumbers.map(buildMainDetail);
+
+  // 特別號預測 + 反向預測 + 詳細
+  let special           = null;
+  let specialDetail     = null;
+  let notSpecial        = null;
+  let notSpecialDetail  = null;
+
   if (specialMax > 0) {
-    const exclude = specialMax === maxNum ? selected : [];
-    special = predictSpecial(draws, specialMax, recentSpec, exclude);
+    const sStats = computeSpecialStats(draws, specialMax, recentSpec);
+    const expF   = total / specialMax || 1;
+    const expR   = (sStats.recentSlice / specialMax) || 1;
+
+    const sRanked = [];
+    for (let i = 1; i <= specialMax; i++) {
+      const fS = sStats.freq[i] / expF;
+      const rS = sStats.recentFreq[i] / expR;
+      const gS = Math.min(sStats.lastSeen[i] / 12, 3.0);
+      sRanked.push({ num: i, score: fS * 0.20 + rS * 0.50 + gS * 0.30 });
+    }
+
+    const buildSpecialDetail = (num, score) => ({
+      num,
+      freq:       sStats.freq[num],
+      gap:        sStats.lastSeen[num],
+      recentFreq: sStats.recentFreq[num],
+      score:      Math.round(score * 100)
+    });
+
+    // 大樂透/六合彩 special 跟主號同池,需排除已選主號;威力彩特別池獨立
+    const exclude    = specialMax === maxNum ? selected : [];
+    const candidates = sRanked.filter(x => !exclude.includes(x.num));
+
+    if (candidates.length) {
+      // 預測:加權隨機從前 40% 池子
+      const descPool = [...candidates].sort((a, b) => b.score - a.score);
+      const poolSize = Math.max(2, Math.ceil(descPool.length * 0.4));
+      const top      = descPool.slice(0, poolSize);
+      const sum      = top.reduce((s, x) => s + x.score, 0);
+      let r = Math.random() * sum;
+      for (const x of top) {
+        r -= x.score;
+        if (r <= 0) { special = x.num; break; }
+      }
+      if (special == null) special = top[0].num;
+      const sObj = candidates.find(x => x.num === special);
+      specialDetail = buildSpecialDetail(special, sObj.score);
+
+      // 反向預測:分數最低的一個
+      const ascPool = [...candidates].sort((a, b) => a.score - b.score);
+      notSpecial       = ascPool[0].num;
+      notSpecialDetail = buildSpecialDetail(notSpecial, ascPool[0].score);
+    }
   }
 
   return {
-    numbers:    selected,
+    numbers:           selected,
     special,
+    specialDetail,
+    notNumbers,
+    notNumberDetails,
+    notSpecial,
+    notSpecialDetail,
     confidence,
-    recentN:    recentSlice,
-    details:    selected.map(n => ({
-      num:        n,
-      freq:       freq[n],
-      gap:        lastSeen[n],
-      recentFreq: recentFreq[n],
-      score:      Math.round(scores[n] * 100)
-    }))
+    recentN:           recentSlice,
+    details:           selected.map(buildMainDetail)
   };
 }
 

@@ -459,6 +459,118 @@ body {
   .special-chart-wrap { height: 220px; }
 }
 
+/* ── 預測特別號詳細卡 ──────────────────────────────────── */
+.special-detail-card {
+  border-left: 3px solid #b91c1c;
+}
+.special-detail-body {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 8px 4px;
+  flex-wrap: wrap;
+}
+.special-detail-ball {
+  flex-shrink: 0;
+}
+.special-detail-info {
+  flex: 1;
+  min-width: 240px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 24px;
+}
+.special-detail-info .detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--sub);
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+}
+.special-detail-info .detail-row span {
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  color: #fecaca;
+}
+
+/* ── 特別號統計表 (分析頁) ────────────────────────────── */
+.special-stats-card {
+  border-left: 3px solid #b91c1c;
+}
+.special-stats-card .stats-table tbody tr:hover {
+  background: rgba(185,28,28,0.06);
+}
+
+/* ── 五不出牌 (反向預測) ──────────────────────────────── */
+.not-out-card {
+  border-left: 3px solid #2563eb;
+  background: linear-gradient(135deg, rgba(37,99,235,0.04), rgba(37,99,235,0) 60%);
+}
+.not-out-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.not-out-card .card-title .card-sub {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--muted);
+}
+.not-out-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #93c5fd, #1d4ed8 80%);
+  box-shadow: 0 0 12px rgba(37,99,235,0.6);
+  flex-shrink: 0;
+}
+.not-out-balls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  padding: 18px 4px 22px;
+  justify-content: center;
+}
+.ball.not-out {
+  background: radial-gradient(circle at 38% 32%, #bfdbfe, #1d4ed8 80%);
+  color: #fff;
+  box-shadow: 0 4px 18px rgba(29,78,216,.45), inset 0 2px 6px rgba(255,255,255,.25);
+}
+.ball.not-out.special {
+  background: radial-gradient(circle at 38% 32%, #fecaca, #b91c1c 80%);
+  box-shadow: 0 4px 20px rgba(185,28,28,.5), inset 0 2px 6px rgba(255,255,255,.25);
+}
+.not-out-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.not-out-detail-grid .detail-card {
+  border-left: 2px solid rgba(37,99,235,.4);
+  background: rgba(37,99,235,0.04);
+}
+.not-out-detail-grid .detail-card.special-out {
+  border-left-color: rgba(185,28,28,.5);
+  background: rgba(185,28,28,0.05);
+}
+.not-out-detail-grid .detail-num {
+  color: #93c5fd;
+}
+.not-out-detail-grid .detail-card.special-out .detail-num {
+  color: #fecaca;
+}
+.not-out-detail-grid .detail-score {
+  background: linear-gradient(90deg, rgba(37,99,235,.5), rgba(37,99,235,.2));
+}
+.not-out-detail-grid .detail-card.special-out .detail-score {
+  background: linear-gradient(90deg, rgba(185,28,28,.5), rgba(185,28,28,.2));
+}
+
 @keyframes ballDrop {
   0%   { transform: translateY(-30px) scale(.5); opacity: 0; }
   60%  { transform: translateY(4px)  scale(1.08); }

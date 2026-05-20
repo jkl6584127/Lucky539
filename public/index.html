@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-  <link rel="stylesheet" href="css/style.css?v=4">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 
@@ -317,6 +317,29 @@
     </div>
   </div>
 
+  <!-- ── 特別號詳細統計表 (僅大樂透/六合彩/威力彩) ── -->
+  <div class="card special-stats-card" id="specialStatsCard" style="display:none">
+    <div class="card-title">
+      <span class="special-title-dot"></span>
+      特別號詳細統計表
+    </div>
+    <div class="table-wrap">
+      <table class="stats-table">
+        <thead>
+          <tr>
+            <th>特別號</th>
+            <th>出現次數</th>
+            <th>出現率 %</th>
+            <th><span class="recentN-label">近100期</span>出現</th>
+            <th>距上次出現 (期)</th>
+            <th>熱度</th>
+          </tr>
+        </thead>
+        <tbody id="specialStatsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
 </main>
 
 <!-- ════ SECTION: Predict ════ -->
@@ -341,6 +364,26 @@
   </div>
 
   <div class="predict-detail-grid" id="predictDetail"></div>
+
+  <!-- ── 預測特別號詳細 (僅大樂透/六合彩/威力彩) ── -->
+  <div class="card special-detail-card" id="specialDetailCard" style="display:none">
+    <div class="card-title">
+      <span class="special-title-dot"></span>
+      預測特別號詳細分析
+    </div>
+    <div class="special-detail-body" id="specialDetailBody"></div>
+  </div>
+
+  <!-- ── 五不出牌:反向預測 (所有彩券都顯示) ── -->
+  <div class="card not-out-card" id="notOutCard">
+    <div class="card-title">
+      <span class="not-out-dot"></span>
+      🚫 五不出牌
+      <span class="card-sub">反向統計最不會開出的號碼 (5 主號 + 特別號)</span>
+    </div>
+    <div class="not-out-balls" id="notOutBalls"></div>
+    <div class="not-out-detail-grid" id="notOutDetails"></div>
+  </div>
 
   <div class="card">
     <div class="card-title">多組推薦組合</div>
@@ -432,6 +475,6 @@
   </button>
 </nav>
 
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>
