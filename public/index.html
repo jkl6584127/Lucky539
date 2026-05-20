@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -237,6 +237,34 @@
     </div>
   </div>
 
+  <!-- ── 特別號分析 (僅大樂透/六合彩/威力彩顯示) ── -->
+  <div class="card special-analysis-card" id="specialAnalysisCard" style="display:none">
+    <div class="card-title">
+      <span class="special-title-dot"></span>
+      特別號分析
+      <span class="card-sub" id="specialAnalysisHint">─</span>
+    </div>
+    <div class="special-grid">
+      <div class="special-chart-wrap">
+        <canvas id="specialFreqChart"></canvas>
+      </div>
+      <div class="special-side">
+        <div class="special-row">
+          <div class="special-row-label">🔥 最熱</div>
+          <div class="num-pills special-pills" id="specialHotNums"></div>
+        </div>
+        <div class="special-row">
+          <div class="special-row-label">❄️ 最冷</div>
+          <div class="num-pills special-pills" id="specialColdNums"></div>
+        </div>
+        <div class="special-row">
+          <div class="special-row-label">📅 最久未出</div>
+          <div class="num-pills special-pills" id="specialGapNums"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ════ SECTION: Analysis ════ -->
@@ -404,6 +432,6 @@
   </button>
 </nav>
 
-<script src="js/app.js?v=7"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>

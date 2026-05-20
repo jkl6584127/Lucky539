@@ -688,9 +688,72 @@ function computeStats(draws, maxNum = 39, recentSpec = { kind: 'recent', n: 100 
   return { freq, lastSeen, recentFreq, recentSlice: recentDraws.length };
 }
 
+// ─── Special number statistics (大樂透/六合彩/威力彩) ───
+// 特別號是獨立池 (威力彩 1-8 或大樂透/六合彩 1-49 各取一個)
+function computeSpecialStats(draws, specialMax, recentSpec) {
+  const freq       = Array(specialMax + 1).fill(0);
+  const lastSeen   = Array(specialMax + 1).fill(-1);
+  const recentFreq = Array(specialMax + 1).fill(0);
+
+  draws.forEach((d, idx) => {
+    const s = d.special;
+    if (s != null && s >= 1 && s <= specialMax) {
+      freq[s]++;
+      if (lastSeen[s] === -1) lastSeen[s] = idx;
+    }
+  });
+
+  let recentDraws;
+  if (recentSpec.kind === 'range') {
+    recentDraws = draws.slice(recentSpec.sliceStart, recentSpec.sliceEnd);
+  } else {
+    recentDraws = draws.slice(0, Math.min(recentSpec.n || 100, draws.length));
+  }
+  recentDraws.forEach(d => {
+    const s = d.special;
+    if (s != null && s >= 1 && s <= specialMax) recentFreq[s]++;
+  });
+
+  for (let i = 1; i <= specialMax; i++) if (lastSeen[i] === -1) lastSeen[i] = draws.length;
+
+  return { freq, lastSeen, recentFreq, recentSlice: recentDraws.length };
+}
+
+// 預測特別號:加權隨機從前 40% 池子選一個
+// exclude:大樂透/六合彩 special 跟主號同池,需排除已選主號
+function predictSpecial(draws, specialMax, recentSpec, exclude = []) {
+  if (specialMax <= 0 || draws.length < 20) return null;
+
+  const { freq, lastSeen, recentFreq, recentSlice } = computeSpecialStats(draws, specialMax, recentSpec);
+  const total = draws.length;
+  const expF  = total / specialMax;
+  const expR  = (recentSlice || 1) / specialMax;
+
+  const ranked = [];
+  for (let i = 1; i <= specialMax; i++) {
+    if (exclude.includes(i)) continue;
+    const fS = freq[i] / (expF || 1);
+    const rS = recentFreq[i] / (expR || 1);
+    const gS = Math.min(lastSeen[i] / 12, 3.0);
+    ranked.push({ num: i, score: fS * 0.20 + rS * 0.50 + gS * 0.30 });
+  }
+  if (!ranked.length) return null;
+  ranked.sort((a, b) => b.score - a.score);
+
+  const poolSize = Math.max(2, Math.ceil(ranked.length * 0.4));
+  const pool = ranked.slice(0, poolSize);
+  const sum  = pool.reduce((s, x) => s + x.score, 0);
+  let r = Math.random() * sum;
+  for (const x of pool) {
+    r -= x.score;
+    if (r <= 0) return x.num;
+  }
+  return pool[0].num;
+}
+
 // ─── Prediction ──────────────────────────────────────────
 
-function predict(draws, maxNum = 39, numsPerDraw = 5, recentSpec = { kind: 'recent', n: 100 }) {
+function predict(draws, maxNum = 39, numsPerDraw = 5, recentSpec = { kind: 'recent', n: 100 }, specialMax = 0) {
   if (draws.length < 20) {
     const fallback = Array.from({ length: numsPerDraw }, (_, i) => Math.round((i + 1) * maxNum / (numsPerDraw + 1)));
     return { numbers: fallback, confidence: 0, details: [] };
@@ -736,8 +799,16 @@ function predict(draws, maxNum = 39, numsPerDraw = 5, recentSpec = { kind: 'rece
   const avgScore   = selected.reduce((s, n) => s + scores[n], 0) / numsPerDraw;
   const confidence = Math.min(Math.round(avgScore * 45 + 20), 92);
 
+  // 特別號預測:大樂透/六合彩 (specialMax==maxNum) 需排除已選主號避免重複
+  let special = null;
+  if (specialMax > 0) {
+    const exclude = specialMax === maxNum ? selected : [];
+    special = predictSpecial(draws, specialMax, recentSpec, exclude);
+  }
+
   return {
     numbers:    selected,
+    special,
     confidence,
     recentN:    recentSlice,
     details:    selected.map(n => ({
@@ -775,19 +846,22 @@ function parseRecentSpec(req, draws) {
 }
 
 // Helper: resolve draws + lottery meta from request
+// specialMax: 特別號上限 (0 = 該彩券無特別號,例如 539、加州)
 async function resolveDraws(req, force = false) {
   const type = req.query.lottery || '539';
   if (type === 'calif') {
     const draws = await updateCalifData(force);
-    return { draws, maxNum: 39, numsPerDraw: 5 };
+    return { draws, maxNum: 39, numsPerDraw: 5, specialMax: 0 };
   }
   if (PILIO_CFGS[type]) {
+    const cfg = PILIO_CFGS[type];
+    // 539 雖然也是 pilio,但沒有特別號;這裡的 specialMax 來自 PILIO_CFGS 設定
     const draws = await updatePilioData(type, force);
-    return { draws, maxNum: PILIO_CFGS[type].maxNum, numsPerDraw: PILIO_CFGS[type].numsPerDraw };
+    return { draws, maxNum: cfg.maxNum, numsPerDraw: cfg.numsPerDraw, specialMax: cfg.specialMax || 0 };
   }
   // default: 539
   const draws = await updateData(force);
-  return { draws, maxNum: 39, numsPerDraw: 5 };
+  return { draws, maxNum: 39, numsPerDraw: 5, specialMax: 0 };
 }
 
 app.get('/api/status', (req, res) => {
@@ -823,7 +897,7 @@ app.get('/api/latest', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
+    const { draws, maxNum, numsPerDraw, specialMax } = await resolveDraws(req);
     if (!draws.length) return res.status(503).json({ error: 'No data' });
 
     const recentSpec = parseRecentSpec(req, draws);
@@ -839,6 +913,34 @@ app.get('/api/stats', async (req, res) => {
       });
     }
     const byFreq = [...numbers].sort((a, b) => b.freq - a.freq);
+
+    // 特別號統計 (僅大樂透 / 六合彩 / 威力彩)
+    let specialBlock = null;
+    if (specialMax > 0) {
+      const sStats = computeSpecialStats(draws, specialMax, recentSpec);
+      const specialNumbers = [];
+      const validDraws = draws.filter(d => d.special != null).length;
+      for (let i = 1; i <= specialMax; i++) {
+        specialNumbers.push({
+          num:        i,
+          freq:       sStats.freq[i],
+          pct:        validDraws > 0 ? +((sStats.freq[i] / validDraws) * 100).toFixed(2) : 0,
+          gap:        sStats.lastSeen[i],
+          recentFreq: sStats.recentFreq[i]
+        });
+      }
+      const bySFreq = [...specialNumbers].sort((a, b) => b.freq - a.freq);
+      const topN = Math.min(10, specialMax);
+      specialBlock = {
+        specialMax,
+        specialNumbers,
+        specialHot:  bySFreq.slice(0, topN).map(x => x.num),
+        specialCold: bySFreq.slice(-topN).reverse().map(x => x.num),
+        specialMaxFreq: bySFreq[0].freq,
+        specialMinFreq: bySFreq[bySFreq.length - 1].freq
+      };
+    }
+
     res.json({
       totalDraws: draws.length,
       recentN:    recentSlice,
@@ -851,17 +953,18 @@ app.get('/api/stats', async (req, res) => {
       hot10:   byFreq.slice(0, 10).map(x => x.num),
       cold10:  byFreq.slice(-10).reverse().map(x => x.num),
       maxFreq: byFreq[0].freq,
-      minFreq: byFreq[byFreq.length - 1].freq
+      minFreq: byFreq[byFreq.length - 1].freq,
+      ...(specialBlock || {})
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/predict', async (req, res) => {
   try {
-    const { draws, maxNum, numsPerDraw } = await resolveDraws(req);
+    const { draws, maxNum, numsPerDraw, specialMax } = await resolveDraws(req);
     if (draws.length < 20) return res.status(503).json({ error: 'Insufficient data' });
     const recentSpec = parseRecentSpec(req, draws);
-    const result = predict(draws, maxNum, numsPerDraw, recentSpec);
+    const result = predict(draws, maxNum, numsPerDraw, recentSpec, specialMax);
     result.mode       = recentSpec.kind;
     result.rangeStart = recentSpec.kind === 'range' ? recentSpec.startDex : null;
     result.rangeEnd   = recentSpec.kind === 'range' ? recentSpec.endDex   : null;

@@ -359,6 +359,106 @@ body {
   box-shadow: 0 2px 8px rgba(185,28,28,.4);
 }
 
+/* ── 特別號分析卡片 ────────────────────────────────────── */
+.special-analysis-card {
+  border-left: 3px solid #b91c1c;
+  background: linear-gradient(135deg, rgba(185,28,28,0.04), rgba(185,28,28,0) 60%), var(--card-bg, rgba(255,255,255,0.02));
+}
+.special-analysis-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.special-title-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #fecaca, #b91c1c 80%);
+  box-shadow: 0 0 12px rgba(185,28,28,0.6);
+  flex-shrink: 0;
+}
+.special-analysis-card .card-title .card-sub {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.special-grid {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 20px;
+  margin-top: 4px;
+}
+.special-chart-wrap {
+  position: relative;
+  height: 280px;
+  min-width: 0;
+}
+.special-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.special-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.special-row-label {
+  font-size: 13px;
+  color: var(--sub);
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.special-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.special-pills .num-pill {
+  background: linear-gradient(135deg, rgba(185,28,28,0.18), rgba(185,28,28,0.08));
+  border: 1px solid rgba(185,28,28,0.35);
+  color: #fecaca;
+  min-width: 36px;
+  text-align: center;
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  font-size: 14px;
+  transition: transform .15s, box-shadow .15s;
+}
+.special-pills .num-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(185,28,28,0.3);
+}
+.special-pills .num-pill.cold {
+  background: linear-gradient(135deg, rgba(29,78,216,0.18), rgba(29,78,216,0.08));
+  border-color: rgba(29,78,216,0.35);
+  color: #bfdbfe;
+}
+.special-pills .num-pill.cold:hover {
+  box-shadow: 0 4px 12px rgba(29,78,216,0.3);
+}
+.special-pills .num-pill.gap-warn {
+  background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.08));
+  border-color: rgba(245,158,11,0.4);
+  color: #fcd34d;
+}
+.special-pills .num-pill .pill-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 6px;
+  font-family: 'Noto Sans TC', sans-serif;
+  font-weight: 400;
+}
+
+@media (max-width: 768px) {
+  .special-grid { grid-template-columns: 1fr; }
+  .special-chart-wrap { height: 220px; }
+}
+
 @keyframes ballDrop {
   0%   { transform: translateY(-30px) scale(.5); opacity: 0; }
   60%  { transform: translateY(4px)  scale(1.08); }

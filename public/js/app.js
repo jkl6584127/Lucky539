@@ -58,6 +58,7 @@ let freqAllChartInst = null;
 let oddEvenChartInst = null;
 let rangeChartInst   = null;
 let sumChartInst     = null;
+let specialChartInst = null;
 
 // ─── Helpers ─────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -342,6 +343,7 @@ function renderDashboard(latest) {
     buildGapChart();
     buildHeatmap();
     renderHotCold();
+    buildSpecialAnalysis();
   }
 }
 
@@ -384,7 +386,7 @@ function updateRecentLabels() {
 
 function renderHeroPred() {
   if (!predData?.numbers) return;
-  renderBalls('predictBalls', predData.numbers, 'pred');
+  renderBalls('predictBalls', predData.numbers, 'pred', predData.special);
   $('confBadge').textContent = `${predData.confidence}%`;
 }
 
@@ -501,6 +503,96 @@ function buildHeatmap() {
 }
 
 // ─── Hot / Cold pills ─────────────────────────────────────
+// ─── 特別號分析 (僅大樂透 / 六合彩 / 威力彩) ─────────────
+function buildSpecialAnalysis() {
+  const card = $('specialAnalysisCard');
+  if (!card) return;
+
+  if (!statsData || !statsData.specialMax || !statsData.specialNumbers) {
+    card.style.display = 'none';
+    if (specialChartInst) { specialChartInst.destroy(); specialChartInst = null; }
+    return;
+  }
+
+  card.style.display = '';
+  $('specialAnalysisHint').textContent =
+    `共 ${statsData.totalDraws.toLocaleString()} 期 · 分析範圍 ${rangeLabel()}`;
+
+  const sNums = statsData.specialNumbers;
+  const labels = sNums.map(n => fmt(n.num));
+  const values = sNums.map(n => n.freq);
+  const maxF   = Math.max(...values, 1);
+
+  const ctx = $('specialFreqChart').getContext('2d');
+  if (specialChartInst) specialChartInst.destroy();
+  specialChartInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '出現次數',
+        data: values,
+        backgroundColor: values.map(v => {
+          const t = v / maxF;
+          if (t > .80) return 'rgba(220,38,38,.85)';
+          if (t > .60) return 'rgba(239,68,68,.7)';
+          if (t > .40) return 'rgba(245,158,11,.65)';
+          return 'rgba(96,165,250,.5)';
+        }),
+        borderRadius: 6,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: c => {
+              const n = sNums[c.dataIndex];
+              return [
+                `出現 ${n.freq} 次 (${n.pct}%)`,
+                `${rangeLabel()}: ${n.recentFreq} 次`,
+                `距上次: ${n.gap} 期`
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,.05)' }, ticks: { precision: 0 } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  // Pills
+  const renderPills = (containerId, nums, extraClass, subFn) => {
+    const c = $(containerId);
+    if (!c) return;
+    c.innerHTML = '';
+    nums.forEach(num => {
+      const n = sNums[num - 1];
+      const el = document.createElement('div');
+      el.className = `num-pill ${extraClass || ''}`.trim();
+      const sub = subFn ? `<span class="pill-sub">${subFn(n)}</span>` : '';
+      el.innerHTML = fmt(num) + sub;
+      el.title = `號碼 ${fmt(num)} · 出現 ${n.freq} 次 · 距上次 ${n.gap} 期`;
+      c.appendChild(el);
+    });
+  };
+
+  renderPills('specialHotNums',  statsData.specialHot,  '',      n => `${n.freq}次`);
+  renderPills('specialColdNums', statsData.specialCold, 'cold',  n => `${n.freq}次`);
+
+  // 最久未出 (gap 最大)
+  const byGap = [...sNums].sort((a, b) => b.gap - a.gap);
+  const gapTop = byGap.slice(0, Math.min(10, sNums.length)).map(n => n.num);
+  renderPills('specialGapNums', gapTop, 'gap-warn', n => `${n.gap}期`);
+}
+
 function renderHotCold() {
   const hot  = $('hotNums');
   const cold = $('coldNums');
@@ -740,6 +832,14 @@ function renderPredictSection() {
     const b = makeBall(n, 'pred', i * 100);
     big.appendChild(b);
   });
+  // 特別號:加分隔符 + 紅球 (大樂透/六合彩/威力彩才會有)
+  if (predData.special != null) {
+    const sep = document.createElement('span');
+    sep.className = 'ball-separator';
+    sep.textContent = '+';
+    big.appendChild(sep);
+    big.appendChild(makeBall(predData.special, 'pred special', predData.numbers.length * 100));
+  }
 
   // Confidence bar
   const conf = predData.confidence || 0;
@@ -783,9 +883,9 @@ async function renderMultiPred() {
     try {
       const r = await fetch(apiQ('/api/predict', analysisQuery()));
       const p = await r.json();
-      results.push({ label: labels[i], numbers: p.numbers, conf: p.confidence });
+      results.push({ label: labels[i], numbers: p.numbers, special: p.special, conf: p.confidence });
     } catch (_) {
-      results.push({ label: labels[i], numbers: predData.numbers, conf: predData.confidence });
+      results.push({ label: labels[i], numbers: predData.numbers, special: predData.special, conf: predData.confidence });
     }
   }
 
@@ -797,10 +897,13 @@ async function renderMultiPred() {
     const ballsHtml = res.numbers.map((n, i) => `
       <div class="ball pred" style="animation-delay:${i*60}ms;width:44px;height:44px;font-size:16px">${fmt(n)}</div>
     `).join('');
+    const specialHtml = (res.special != null)
+      ? `<span class="ball-separator" style="font-size:22px">+</span><div class="ball pred special" style="animation-delay:${res.numbers.length*60}ms;width:44px;height:44px;font-size:16px">${fmt(res.special)}</div>`
+      : '';
 
     row.innerHTML = `
       <div class="multi-label">${res.label}</div>
-      <div class="multi-balls">${ballsHtml}</div>
+      <div class="multi-balls">${ballsHtml}${specialHtml}</div>
       <div style="margin-left:auto;font-size:12px;color:var(--sub)">信心 ${res.conf}%</div>
     `;
     cont.appendChild(row);
