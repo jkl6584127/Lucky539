@@ -52,6 +52,71 @@ function rangeLabel(src = statsData) {
   return `近${rn}期`;
 }
 
+// ─── Auth ────────────────────────────────────────────────
+let authState = { loggedIn: false, username: null };
+
+function renderAuthBox() {
+  const box = $('authBox');
+  if (authState.loggedIn) {
+    box.innerHTML = `<span class="auth-user">👤 <b>${authState.username}</b></span><button class="auth-logout" id="authLogoutBtn">登出</button>`;
+    $('authLogoutBtn').addEventListener('click', doLogout);
+  } else {
+    box.innerHTML = `<button class="auth-btn" id="loginOpenBtn">🔒 登入</button>`;
+    $('loginOpenBtn').addEventListener('click', openAuthModal);
+  }
+}
+
+function openAuthModal() {
+  $('authModalErr').textContent = '';
+  $('authUsername').value = '';
+  $('authPassword').value = '';
+  $('authModalOverlay').classList.add('open');
+  $('authUsername').focus();
+}
+function closeAuthModal() { $('authModalOverlay').classList.remove('open'); }
+
+async function doLogin() {
+  const username = $('authUsername').value.trim();
+  const password = $('authPassword').value;
+  if (!username || !password) { $('authModalErr').textContent = '請輸入帳號密碼'; return; }
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const j = await r.json();
+    if (!r.ok) { $('authModalErr').textContent = j.error || '登入失敗'; return; }
+    authState = { loggedIn: true, username: j.username };
+    renderAuthBox();
+    closeAuthModal();
+    await loadAll();
+  } catch (e) { $('authModalErr').textContent = '連線失敗，請重試'; }
+}
+
+async function doLogout() {
+  try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
+  authState = { loggedIn: false, username: null };
+  renderAuthBox();
+  await loadAll();
+}
+
+async function checkSession() {
+  try {
+    const r = await fetch('/api/session');
+    const j = await r.json();
+    authState = { loggedIn: !!j.loggedIn, username: j.username || null };
+  } catch (e) { authState = { loggedIn: false, username: null }; }
+  renderAuthBox();
+}
+
+$('authCloseBtn').addEventListener('click', closeAuthModal);
+$('authModalOverlay').addEventListener('click', e => { if (e.target.id === 'authModalOverlay') closeAuthModal(); });
+$('lockBanner').addEventListener('click', openAuthModal);
+$('authSubmitBtn').addEventListener('click', doLogin);
+$('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
+
 let freqChartInst    = null;
 let gapChartInst     = null;
 let freqAllChartInst = null;
@@ -241,6 +306,9 @@ async function loadAll() {
     const latest = await latestRes.json();
     const drawsJson = await drawsRes.json();
     allDraws = drawsJson.data || [];
+
+    // 依伺服器回傳的 locked 狀態決定要不要模糊（伺服器端才是真正的權威判斷）
+    document.body.classList.toggle('locked-content', !!(statsData?.locked || predData?.locked));
 
     renderDashboard(latest);
     renderAnalysis();
@@ -1322,6 +1390,7 @@ function initSortable() {
 (async () => {
   initParticles();
   initSortable();
+  await checkSession();
   await pollUntilReady();
   await loadAll();
 })();

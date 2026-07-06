@@ -2,13 +2,111 @@ const express = require('express');
 const axios   = require('axios');
 const fs      = require('fs');
 const path    = require('path');
+const crypto  = require('crypto');
 
 const app        = express();
 const PORT       = process.env.PORT || 3000;
-const DATA_DIR   = path.join(__dirname, 'data');
+const DATA_DIR   = process.env.DATA_DIR || path.join(__dirname, 'data');
 const CACHE_FILE       = path.join(DATA_DIR, 'lottery539.json');
 const CALIF_CACHE_FILE = path.join(DATA_DIR, 'lotteryCalif.json');
+const USERS_FILE       = path.join(DATA_DIR, 'users.json');
 const CACHE_TTL        = 30 * 60 * 1000; // 30 minutes
+const SESSION_TTL      = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// ─── Auth: 帳號 / Session ─────────────────────────────────
+const sessions = new Map(); // token -> { username, expires }
+
+function loadUsers() {
+  try { if (fs.existsSync(USERS_FILE)) return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch (e) {}
+  return {};
+}
+function saveUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+function hashPassword(password, salt) {
+  salt = salt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return { salt, hash };
+}
+function verifyPassword(password, salt, hash) {
+  const check = crypto.scryptSync(password, salt, 64).toString('hex');
+  const a = Buffer.from(check, 'hex'), b = Buffer.from(hash, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  header.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if (idx === -1) return;
+    out[pair.slice(0, idx).trim()] = decodeURIComponent(pair.slice(idx + 1).trim());
+  });
+  return out;
+}
+function getSession(req) {
+  const token = parseCookies(req).sid;
+  if (!token) return null;
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (Date.now() > s.expires) { sessions.delete(token); return null; }
+  return { token, username: s.username };
+}
+function requireAdmin(req, res, next) {
+  const key = req.headers['x-admin-key'];
+  if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  next();
+}
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function randDistinct(count, maxNum) {
+  count = Math.min(count, maxNum);
+  const set = new Set();
+  while (set.size < count) set.add(randInt(1, maxNum));
+  return [...set];
+}
+
+// 未登入時，把統計/預測回應裡真正的號碼與數值替換成隨機假資料，
+// 前端會再疊加模糊效果，避免真實分析結果透過 API 外流。
+function maskStatsPayload(payload, maxNum) {
+  const masked = { ...payload, locked: true };
+  masked.numbers = payload.numbers.map(n => ({
+    num: n.num, freq: randInt(50, 200), pct: +(Math.random() * 3 + 1).toFixed(2),
+    gap: randInt(0, 20), recentFreq: randInt(0, 15)
+  }));
+  masked.hot10    = randDistinct(10, maxNum);
+  masked.cold10   = randDistinct(10, maxNum);
+  masked.maxFreq  = randInt(150, 220);
+  masked.minFreq  = randInt(30, 80);
+  if (payload.specialNumbers) {
+    const sMax = payload.specialMax;
+    masked.specialNumbers = payload.specialNumbers.map(n => ({
+      num: n.num, freq: randInt(10, 60), pct: +(Math.random() * 4).toFixed(2),
+      gap: randInt(0, 20), recentFreq: randInt(0, 10)
+    }));
+    masked.specialHot     = randDistinct(10, sMax);
+    masked.specialCold    = randDistinct(10, sMax);
+    masked.specialMaxFreq = randInt(30, 60);
+    masked.specialMinFreq = randInt(5, 15);
+  }
+  return masked;
+}
+function maskPredictPayload(payload, maxNum, numsPerDraw, specialMax) {
+  const masked = { ...payload, locked: true };
+  masked.numbers = randDistinct(numsPerDraw, maxNum).sort((a, b) => a - b);
+  masked.details = masked.numbers.map(n => ({ num: n, freq: randInt(50, 200), gap: randInt(0, 20), recentFreq: randInt(0, 15), score: randInt(20, 90) }));
+  masked.notNumbers = randDistinct(5, maxNum).sort((a, b) => a - b);
+  masked.notNumberDetails = masked.notNumbers.map(n => ({ num: n, freq: randInt(10, 60), gap: randInt(0, 20), recentFreq: randInt(0, 10), score: randInt(1, 20) }));
+  masked.confidence = randInt(55, 85);
+  if (specialMax > 0) {
+    masked.special = randInt(1, specialMax);
+    masked.specialDetail = { num: masked.special, freq: randInt(10, 60), gap: randInt(0, 20), recentFreq: randInt(0, 10), score: randInt(20, 90) };
+    masked.notSpecial = randInt(1, specialMax);
+    masked.notSpecialDetail = { num: masked.notSpecial, freq: randInt(5, 30), gap: randInt(0, 20), recentFreq: randInt(0, 5), score: randInt(1, 20) };
+  }
+  return masked;
+}
 
 // ─── Generic pilio lottery config ────────────────────────
 // 大樂透 / 六合彩 / 威力彩 共用同一套 pilio 抓取邏輯
@@ -922,6 +1020,52 @@ async function resolveDraws(req, force = false) {
   return { draws, maxNum: 39, numsPerDraw: 5, specialMax: 0 };
 }
 
+// ─── Auth routes ─────────────────────────────────────────
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: '請輸入帳號密碼' });
+  const users = loadUsers();
+  const u = users[username];
+  if (!u || !verifyPassword(password, u.salt, u.hash)) {
+    return res.status(401).json({ error: '帳號或密碼錯誤' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { username, expires: Date.now() + SESSION_TTL });
+  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; Max-Age=${SESSION_TTL / 1000}; SameSite=Lax`);
+  res.json({ ok: true, username });
+});
+
+app.post('/api/logout', (req, res) => {
+  const token = parseCookies(req).sid;
+  if (token) sessions.delete(token);
+  res.setHeader('Set-Cookie', 'sid=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax');
+  res.json({ ok: true });
+});
+
+app.get('/api/session', (req, res) => {
+  const s = getSession(req);
+  res.json({ loggedIn: !!s, username: s ? s.username : null });
+});
+
+// ─── Admin routes (帳號管理，需帶 x-admin-key) ──────────────
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json({ users: Object.keys(loadUsers()) });
+});
+app.post('/api/admin/users', requireAdmin, (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: '請輸入帳號密碼' });
+  const users = loadUsers();
+  users[username] = hashPassword(password);
+  saveUsers(users);
+  res.json({ ok: true });
+});
+app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
+  const users = loadUsers();
+  delete users[req.params.username];
+  saveUsers(users);
+  res.json({ ok: true });
+});
+
 app.get('/api/status', (req, res) => {
   const type = req.query.lottery || '539';
   if (type === 'calif') {
@@ -999,7 +1143,7 @@ app.get('/api/stats', async (req, res) => {
       };
     }
 
-    res.json({
+    const payload = {
       totalDraws: draws.length,
       recentN:    recentSlice,
       mode:       recentSpec.kind,
@@ -1013,7 +1157,9 @@ app.get('/api/stats', async (req, res) => {
       maxFreq: byFreq[0].freq,
       minFreq: byFreq[byFreq.length - 1].freq,
       ...(specialBlock || {})
-    });
+    };
+    const loggedIn = !!getSession(req);
+    res.json(loggedIn ? { ...payload, locked: false } : maskStatsPayload(payload, maxNum));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1026,7 +1172,8 @@ app.get('/api/predict', async (req, res) => {
     result.mode       = recentSpec.kind;
     result.rangeStart = recentSpec.kind === 'range' ? recentSpec.startDex : null;
     result.rangeEnd   = recentSpec.kind === 'range' ? recentSpec.endDex   : null;
-    res.json(result);
+    const loggedIn = !!getSession(req);
+    res.json(loggedIn ? { ...result, locked: false } : maskPredictPayload(result, maxNum, numsPerDraw, specialMax));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

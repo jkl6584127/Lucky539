@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>會員帳號管理</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#060814; color:#e2e8f0; font-family:'Noto Sans TC','Segoe UI',sans-serif;
+    min-height:100vh; display:flex; align-items:flex-start; justify-content:center;
+    padding:40px 20px;
+  }
+  .wrap { width:100%; max-width:480px; }
+  h1 { font-size:1.3rem; margin-bottom:6px; }
+  .sub { color:#8a92c0; font-size:.85rem; margin-bottom:24px; }
+  .card {
+    background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.09);
+    border-radius:16px; padding:20px; margin-bottom:16px;
+  }
+  .card h2 { font-size:.95rem; color:#c4a6ff; margin-bottom:14px; letter-spacing:1px; }
+  input {
+    width:100%; padding:10px 12px; margin-bottom:10px;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12);
+    border-radius:10px; color:#e2e8f0; font-size:14px; font-family:inherit;
+  }
+  input:focus { outline:none; border-color:#7c3aed; }
+  button {
+    padding:10px 18px; border:none; border-radius:10px; cursor:pointer;
+    font-family:inherit; font-weight:700; font-size:13px;
+  }
+  .btn-primary { background:linear-gradient(135deg,#7c3aed,#2563eb); color:#fff; width:100%; }
+  .btn-danger { background:rgba(239,68,68,.15); border:1px solid rgba(239,68,68,.4); color:#f87171; }
+  .msg { font-size:.8rem; margin-bottom:10px; min-height:1em; }
+  .msg.err { color:#f87171; }
+  .msg.ok { color:#4ade80; }
+  .user-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:9px 4px; border-bottom:1px solid rgba(255,255,255,.06); font-size:.88rem;
+  }
+  .user-row:last-child { border-bottom:none; }
+  #gate { }
+  #panel { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔒 會員帳號管理</h1>
+  <p class="sub">用來開通/移除交流群會員的登入帳號</p>
+
+  <div id="gate" class="card">
+    <h2>管理密鑰</h2>
+    <div class="msg err" id="gateMsg"></div>
+    <input type="password" id="adminKey" placeholder="輸入 ADMIN_KEY">
+    <button class="btn-primary" id="gateBtn">進入</button>
+  </div>
+
+  <div id="panel">
+    <div class="card">
+      <h2>新增帳號</h2>
+      <div class="msg" id="createMsg"></div>
+      <input type="text" id="newUsername" placeholder="帳號">
+      <input type="password" id="newPassword" placeholder="密碼">
+      <button class="btn-primary" id="createBtn">建立帳號</button>
+    </div>
+    <div class="card">
+      <h2>目前帳號列表</h2>
+      <div id="userList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let adminKey = sessionStorage.getItem('adminKey') || '';
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, {
+      ...opts,
+      headers: { ...(opts.headers || {}), 'x-admin-key': adminKey }
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || '請求失敗');
+    return j;
+  }
+
+  async function loadUsers() {
+    const j = await api('/api/admin/users');
+    const list = $('userList');
+    list.innerHTML = '';
+    if (!j.users.length) { list.innerHTML = '<div class="msg">目前沒有帳號</div>'; return; }
+    j.users.forEach(u => {
+      const row = document.createElement('div');
+      row.className = 'user-row';
+      row.innerHTML = `<span>${u}</span>`;
+      const del = document.createElement('button');
+      del.className = 'btn-danger';
+      del.textContent = '刪除';
+      del.onclick = async () => {
+        if (!confirm(`確定要刪除帳號「${u}」嗎？`)) return;
+        await api('/api/admin/users/' + encodeURIComponent(u), { method: 'DELETE' });
+        loadUsers();
+      };
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  async function enterPanel() {
+    try {
+      await api('/api/admin/users'); // 驗證 key 是否正確
+      sessionStorage.setItem('adminKey', adminKey);
+      $('gate').style.display = 'none';
+      $('panel').style.display = 'block';
+      loadUsers();
+    } catch (e) {
+      $('gateMsg').textContent = '密鑰錯誤或連線失敗';
+    }
+  }
+
+  $('gateBtn').addEventListener('click', () => {
+    adminKey = $('adminKey').value.trim();
+    if (!adminKey) return;
+    enterPanel();
+  });
+  $('adminKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('gateBtn').click(); });
+
+  $('createBtn').addEventListener('click', async () => {
+    const username = $('newUsername').value.trim();
+    const password = $('newPassword').value;
+    const msg = $('createMsg');
+    if (!username || !password) { msg.className = 'msg err'; msg.textContent = '請輸入帳號密碼'; return; }
+    try {
+      await api('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      msg.className = 'msg ok'; msg.textContent = `已建立帳號「${username}」`;
+      $('newUsername').value = ''; $('newPassword').value = '';
+      loadUsers();
+    } catch (e) {
+      msg.className = 'msg err'; msg.textContent = e.message;
+    }
+  });
+
+  if (adminKey) enterPanel();
+</script>
+</body>
+</html>

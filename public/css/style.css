@@ -1426,3 +1426,76 @@ body {
   .bottom-nav .nav-tab { padding: 8px 4px; }
   .tab-icon { width: 26px; height: 26px; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   AUTH — 登入 / 鎖定模糊
+   ═══════════════════════════════════════════════════════ */
+.auth-box { display: flex; align-items: center; gap: 8px; }
+.auth-btn {
+  background: linear-gradient(135deg, rgba(124,58,237,.25), rgba(37,99,235,.25));
+  border: 1px solid rgba(124,58,237,.4); color: #c4a6ff;
+  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 1px;
+  padding: 7px 16px; border-radius: 10px; cursor: pointer; transition: all .2s; white-space: nowrap;
+}
+.auth-btn:hover { background: linear-gradient(135deg, rgba(124,58,237,.4), rgba(37,99,235,.4)); }
+.auth-user { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.auth-user b { color: #e2e8f0; }
+.auth-logout {
+  background: none; border: 1px solid rgba(255,255,255,.15); color: #94a3b8;
+  font-family: inherit; font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer;
+}
+.auth-logout:hover { color: #e2e8f0; border-color: rgba(255,255,255,.3); }
+
+/* 未登入時把統計/預測數字模糊掉 */
+body.locked-content #predictBalls,
+body.locked-content #predictBallsLg,
+body.locked-content #confBadge,
+body.locked-content #kpiHot,
+body.locked-content #kpiCold,
+body.locked-content .locked-target {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.lock-banner {
+  display: none;
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  z-index: 500;
+  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 1px;
+  padding: 12px 24px; border-radius: 30px;
+  box-shadow: 0 10px 40px rgba(124,58,237,.5);
+  cursor: pointer; align-items: center; gap: 8px;
+}
+body.locked-content .lock-banner { display: flex; }
+
+.auth-modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+}
+.auth-modal-overlay.open { display: flex; }
+.auth-modal {
+  background: #0c1028; border: 1px solid rgba(255,255,255,.1);
+  border-radius: 18px; padding: 28px 26px; width: min(340px, 90vw);
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.auth-modal h3 { font-size: 1.1rem; color: #e2e8f0; margin-bottom: 6px; }
+.auth-modal p { font-size: .8rem; color: #8a92c0; margin-bottom: 18px; }
+.auth-modal input {
+  width: 100%; padding: 10px 12px; margin-bottom: 10px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px; color: #e2e8f0; font-size: 14px; font-family: inherit;
+}
+.auth-modal input:focus { outline: none; border-color: #7c3aed; }
+.auth-modal-err { color: #f87171; font-size: .78rem; margin-bottom: 8px; min-height: 1em; }
+.auth-modal-submit {
+  width: 100%; padding: 11px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, #7c3aed, #2563eb); color: #fff;
+  font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; margin-bottom: 8px;
+}
+.auth-modal-close {
+  width: 100%; padding: 9px; border: none; border-radius: 10px; background: none;
+  color: #8a92c0; font-family: inherit; font-size: 13px; cursor: pointer;
+}
