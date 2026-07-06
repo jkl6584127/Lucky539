@@ -6,7 +6,8 @@ const crypto  = require('crypto');
 
 const app        = express();
 const PORT       = process.env.PORT || 3000;
-const DATA_DIR   = process.env.DATA_DIR || path.join(__dirname, 'data');
+const SEED_DIR   = path.join(__dirname, 'data'); // repo 內建的歷史快取（git 版本）
+const DATA_DIR   = process.env.DATA_DIR || SEED_DIR;
 const CACHE_FILE       = path.join(DATA_DIR, 'lottery539.json');
 const CALIF_CACHE_FILE = path.join(DATA_DIR, 'lotteryCalif.json');
 const USERS_FILE       = path.join(DATA_DIR, 'users.json');
@@ -123,6 +124,20 @@ const pilioState = {
 };
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// 首次啟動時，如果 DATA_DIR 指向全新的持久化硬碟（跟 repo 內建的種子資料不同路徑），
+// 把 git 裡已經抓好的歷史快取複製過去，避免重新對外抓一次全部歷史資料。
+// 只補「還不存在」的檔案，不會覆蓋硬碟上已經更新過的資料。
+if (path.resolve(DATA_DIR) !== path.resolve(SEED_DIR) && fs.existsSync(SEED_DIR)) {
+  for (const file of fs.readdirSync(SEED_DIR)) {
+    if (!file.endsWith('.json')) continue;
+    const dest = path.join(DATA_DIR, file);
+    if (!fs.existsSync(dest)) {
+      fs.copyFileSync(path.join(SEED_DIR, file), dest);
+      console.log(`[seed] copied ${file} -> ${dest}`);
+    }
+  }
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
