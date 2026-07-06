@@ -1236,3 +1236,15 @@ app.listen(PORT, () => {
     }
   }
 });
+
+// 每分鐘檢查一次是否需要更新。
+// 這裡不是每分鐘都真的去對外抓資料——updateData / updateCalifData / updatePilioData
+// 內部本來就有 30 分鐘 CACHE_TTL 判斷，沒過期就直接讀本地快取回傳，幾乎零成本。
+// 目的只是讓資料更新「不再依賴有沒有人連進網站」，伺服器自己會固定追上最新一期。
+setInterval(() => {
+  updateData().catch(console.error);
+  updateCalifData().catch(console.error);
+  for (const key of ['lotto', 'mark6', 'super']) {
+    updatePilioData(key).catch(console.error);
+  }
+}, 60 * 1000);
