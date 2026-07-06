@@ -110,13 +110,6 @@ async function checkSession() {
   renderAuthBox();
 }
 
-$('authCloseBtn').addEventListener('click', closeAuthModal);
-$('authModalOverlay').addEventListener('click', e => { if (e.target.id === 'authModalOverlay') closeAuthModal(); });
-$('lockBanner').addEventListener('click', openAuthModal);
-$('authSubmitBtn').addEventListener('click', doLogin);
-$('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
-
 let freqChartInst    = null;
 let gapChartInst     = null;
 let freqAllChartInst = null;
@@ -128,6 +121,13 @@ let specialChartInst = null;
 // ─── Helpers ─────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const fmt = n => String(n).padStart(2, '0');
+
+$('authCloseBtn').addEventListener('click', closeAuthModal);
+$('authModalOverlay').addEventListener('click', e => { if (e.target.id === 'authModalOverlay') closeAuthModal(); });
+$('lockBanner').addEventListener('click', openAuthModal);
+$('authSubmitBtn').addEventListener('click', doLogin);
+$('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
 
 /**
  * 把9碼官方期號 (e.g. "115000059") 轉為 "第115000059期"
