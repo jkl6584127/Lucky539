@@ -60,55 +60,6 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
-function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function randDistinct(count, maxNum) {
-  count = Math.min(count, maxNum);
-  const set = new Set();
-  while (set.size < count) set.add(randInt(1, maxNum));
-  return [...set];
-}
-
-// 未登入時，把統計/預測回應裡真正的號碼與數值替換成隨機假資料，
-// 前端會再疊加模糊效果，避免真實分析結果透過 API 外流。
-function maskStatsPayload(payload, maxNum) {
-  const masked = { ...payload, locked: true };
-  masked.numbers = payload.numbers.map(n => ({
-    num: n.num, freq: randInt(50, 200), pct: +(Math.random() * 3 + 1).toFixed(2),
-    gap: randInt(0, 20), recentFreq: randInt(0, 15)
-  }));
-  masked.hot10    = randDistinct(10, maxNum);
-  masked.cold10   = randDistinct(10, maxNum);
-  masked.maxFreq  = randInt(150, 220);
-  masked.minFreq  = randInt(30, 80);
-  if (payload.specialNumbers) {
-    const sMax = payload.specialMax;
-    masked.specialNumbers = payload.specialNumbers.map(n => ({
-      num: n.num, freq: randInt(10, 60), pct: +(Math.random() * 4).toFixed(2),
-      gap: randInt(0, 20), recentFreq: randInt(0, 10)
-    }));
-    masked.specialHot     = randDistinct(10, sMax);
-    masked.specialCold    = randDistinct(10, sMax);
-    masked.specialMaxFreq = randInt(30, 60);
-    masked.specialMinFreq = randInt(5, 15);
-  }
-  return masked;
-}
-function maskPredictPayload(payload, maxNum, numsPerDraw, specialMax) {
-  const masked = { ...payload, locked: true };
-  masked.numbers = randDistinct(numsPerDraw, maxNum).sort((a, b) => a - b);
-  masked.details = masked.numbers.map(n => ({ num: n, freq: randInt(50, 200), gap: randInt(0, 20), recentFreq: randInt(0, 15), score: randInt(20, 90) }));
-  masked.notNumbers = randDistinct(5, maxNum).sort((a, b) => a - b);
-  masked.notNumberDetails = masked.notNumbers.map(n => ({ num: n, freq: randInt(10, 60), gap: randInt(0, 20), recentFreq: randInt(0, 10), score: randInt(1, 20) }));
-  masked.confidence = randInt(55, 85);
-  if (specialMax > 0) {
-    masked.special = randInt(1, specialMax);
-    masked.specialDetail = { num: masked.special, freq: randInt(10, 60), gap: randInt(0, 20), recentFreq: randInt(0, 10), score: randInt(20, 90) };
-    masked.notSpecial = randInt(1, specialMax);
-    masked.notSpecialDetail = { num: masked.notSpecial, freq: randInt(5, 30), gap: randInt(0, 20), recentFreq: randInt(0, 5), score: randInt(1, 20) };
-  }
-  return masked;
-}
-
 // ─── Generic pilio lottery config ────────────────────────
 // 大樂透 / 六合彩 / 威力彩 共用同一套 pilio 抓取邏輯
 // specialMax: 特別號上限 (威力彩第二區 1-8;其他與 maxNum 相同)
@@ -1173,8 +1124,7 @@ app.get('/api/stats', async (req, res) => {
       minFreq: byFreq[byFreq.length - 1].freq,
       ...(specialBlock || {})
     };
-    const loggedIn = !!getSession(req);
-    res.json(loggedIn ? { ...payload, locked: false } : maskStatsPayload(payload, maxNum));
+    res.json(payload);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1187,8 +1137,7 @@ app.get('/api/predict', async (req, res) => {
     result.mode       = recentSpec.kind;
     result.rangeStart = recentSpec.kind === 'range' ? recentSpec.startDex : null;
     result.rangeEnd   = recentSpec.kind === 'range' ? recentSpec.endDex   : null;
-    const loggedIn = !!getSession(req);
-    res.json(loggedIn ? { ...result, locked: false } : maskPredictPayload(result, maxNum, numsPerDraw, specialMax));
+    res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

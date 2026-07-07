@@ -124,10 +124,25 @@ const fmt = n => String(n).padStart(2, '0');
 
 $('authCloseBtn').addEventListener('click', closeAuthModal);
 $('authModalOverlay').addEventListener('click', e => { if (e.target.id === 'authModalOverlay') closeAuthModal(); });
-$('lockBanner').addEventListener('click', openAuthModal);
+$('memberLoginBtn').addEventListener('click', openAuthModal);
 $('authSubmitBtn').addEventListener('click', doLogin);
 $('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 $('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
+
+// ─── 會員專區：同一份資料，用模糊 + 登入解鎖展示「會員模式」 ───
+function renderMemberSection() {
+  const sec = $('sec-member');
+  if (!sec) return;
+  sec.classList.toggle('member-locked', !authState.loggedIn);
+  if (predData?.numbers) {
+    renderBalls('memberPredictBalls', predData.numbers, 'pred', predData.special);
+    $('memberConfBadge').textContent = `${predData.confidence}%`;
+  }
+  if (statsData) {
+    $('memberKpiHot').textContent  = fmt(statsData.hot10[0]);
+    $('memberKpiCold').textContent = fmt(statsData.cold10[0]);
+  }
+}
 
 /**
  * 把9碼官方期號 (e.g. "115000059") 轉為 "第115000059期"
@@ -198,6 +213,7 @@ document.querySelectorAll('.nav-tab').forEach(btn => {
     if (section === 'analysis' && statsData)    renderAnalysis();
     if (section === 'predict'  && predData)     renderPredictSection();
     if (section === 'history'  && allDraws.length) renderHistory();
+    if (section === 'member')  renderMemberSection();
   });
 });
 
@@ -307,13 +323,11 @@ async function loadAll() {
     const drawsJson = await drawsRes.json();
     allDraws = drawsJson.data || [];
 
-    // 依伺服器回傳的 locked 狀態決定要不要模糊（伺服器端才是真正的權威判斷）
-    document.body.classList.toggle('locked-content', !!(statsData?.locked || predData?.locked));
-
     renderDashboard(latest);
     renderAnalysis();
     renderPredictSection();
     renderHistory();
+    renderMemberSection();
 
     const now = new Date();
     setStatus(`已更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`);
