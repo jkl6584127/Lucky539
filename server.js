@@ -93,6 +93,11 @@ if (path.resolve(DATA_DIR) !== path.resolve(SEED_DIR) && fs.existsSync(SEED_DIR)
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// ─── laihai：需要登入才能看內容的版本（同一份資料，多一層模糊+登入）───
+app.get('/laihai', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'laihai.html'));
+});
+
 // ─── Cache ───────────────────────────────────────────────
 
 function loadCache() {

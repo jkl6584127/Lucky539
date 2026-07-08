@@ -56,7 +56,9 @@ function rangeLabel(src = statsData) {
 let authState = { loggedIn: false, username: null };
 
 function renderAuthBox() {
+  if (!window.GATE_CONTENT) return;
   const box = $('authBox');
+  if (!box) return;
   if (authState.loggedIn) {
     box.innerHTML = `<span class="auth-user">👤 <b>${authState.username}</b></span><button class="auth-logout" id="authLogoutBtn">登出</button>`;
     $('authLogoutBtn').addEventListener('click', doLogout);
@@ -102,12 +104,20 @@ async function doLogout() {
 }
 
 async function checkSession() {
+  if (!window.GATE_CONTENT) return;
   try {
     const r = await fetch('/api/session');
     const j = await r.json();
     authState = { loggedIn: !!j.loggedIn, username: j.username || null };
   } catch (e) { authState = { loggedIn: false, username: null }; }
   renderAuthBox();
+  applyContentGate();
+}
+
+// ─── Content gate：未登入時把主要內容模糊起來 (僅 GATE_CONTENT 頁面) ───
+function applyContentGate() {
+  if (!window.GATE_CONTENT) return;
+  document.body.classList.toggle('member-locked', !authState.loggedIn);
 }
 
 let freqChartInst    = null;
@@ -122,26 +132,12 @@ let specialChartInst = null;
 const $ = id => document.getElementById(id);
 const fmt = n => String(n).padStart(2, '0');
 
-$('authCloseBtn').addEventListener('click', closeAuthModal);
-$('authModalOverlay').addEventListener('click', e => { if (e.target.id === 'authModalOverlay') closeAuthModal(); });
-$('memberLoginBtn').addEventListener('click', openAuthModal);
-$('authSubmitBtn').addEventListener('click', doLogin);
-$('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-$('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
-
-// ─── 會員專區：同一份資料，用模糊 + 登入解鎖展示「會員模式」 ───
-function renderMemberSection() {
-  const sec = $('sec-member');
-  if (!sec) return;
-  sec.classList.toggle('member-locked', !authState.loggedIn);
-  if (predData?.numbers) {
-    renderBalls('memberPredictBalls', predData.numbers, 'pred', predData.special);
-    $('memberConfBadge').textContent = `${predData.confidence}%`;
-  }
-  if (statsData) {
-    $('memberKpiHot').textContent  = fmt(statsData.hot10[0]);
-    $('memberKpiCold').textContent = fmt(statsData.cold10[0]);
-  }
+if (window.GATE_CONTENT) {
+  $('authCloseBtn').addEventListener('click', closeAuthModal);
+  $('authModalOverlay').addEventListener('click', e => { if (e.target.id === 'authModalOverlay') closeAuthModal(); });
+  $('authSubmitBtn').addEventListener('click', doLogin);
+  $('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
 }
 
 /**
@@ -213,7 +209,6 @@ document.querySelectorAll('.nav-tab').forEach(btn => {
     if (section === 'analysis' && statsData)    renderAnalysis();
     if (section === 'predict'  && predData)     renderPredictSection();
     if (section === 'history'  && allDraws.length) renderHistory();
-    if (section === 'member')  renderMemberSection();
   });
 });
 
@@ -327,7 +322,7 @@ async function loadAll() {
     renderAnalysis();
     renderPredictSection();
     renderHistory();
-    renderMemberSection();
+    applyContentGate();
 
     const now = new Date();
     setStatus(`已更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`);

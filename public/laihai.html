@@ -46,6 +46,8 @@
       <button class="lottery-btn" data-lottery="calif">加州天天樂</button>
     </div>
     <div class="nav-divider desktop-only"></div>
+    <div class="auth-box" id="authBox"></div>
+    <div class="nav-divider desktop-only"></div>
     <div class="update-badge" id="updateBadge">
       <span class="badge-dot"></span>
       <span id="updateText" class="badge-label">載入中...</span>
@@ -72,7 +74,7 @@
 </div>
 
 <!-- ════ SECTION: Dashboard ════ -->
-<main id="sec-dashboard" class="section active">
+<main id="sec-dashboard" class="section active member-blur">
 
   <!-- ── Hero row ── -->
   <div class="hero-row">
@@ -268,7 +270,7 @@
 </main>
 
 <!-- ════ SECTION: Analysis ════ -->
-<main id="sec-analysis" class="section">
+<main id="sec-analysis" class="section member-blur">
 
   <div class="card">
     <div class="card-title">全區間號碼頻率排行</div>
@@ -343,7 +345,7 @@
 </main>
 
 <!-- ════ SECTION: Predict ════ -->
-<main id="sec-predict" class="section">
+<main id="sec-predict" class="section member-blur">
 
   <div class="predict-hero">
     <div class="ai-logo">AI</div>
@@ -400,7 +402,7 @@
 </main>
 
 <!-- ════ SECTION: History ════ -->
-<main id="sec-history" class="section">
+<main id="sec-history" class="section member-blur">
 
   <div class="card">
     <div class="history-toolbar">
@@ -475,7 +477,20 @@
   </button>
 </nav>
 
-<script>window.GATE_CONTENT = false;</script>
+<!-- ── 登入視窗 ── -->
+<div class="auth-modal-overlay" id="authModalOverlay">
+  <div class="auth-modal">
+    <h3>會員登入</h3>
+    <p>登入後即可查看完整號碼分析與 AI 預測</p>
+    <div class="auth-modal-err" id="authModalErr"></div>
+    <input type="text" id="authUsername" placeholder="帳號" autocomplete="username">
+    <input type="password" id="authPassword" placeholder="密碼" autocomplete="current-password">
+    <button class="auth-modal-submit" id="authSubmitBtn">登入</button>
+    <button class="auth-modal-close" id="authCloseBtn">取消</button>
+  </div>
+</div>
+
+<script>window.GATE_CONTENT = true;</script>
 <script src="js/app.js?v=12"></script>
 </body>
 </html>
