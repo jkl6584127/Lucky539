@@ -1454,9 +1454,30 @@ body {
 .member-intro .card-title { font-size: 1.3rem; margin-bottom: 6px; }
 .member-intro p { color: #8a92c0; font-size: .85rem; }
 
-.member-blur { filter: none; transition: filter .3s ease; }
-.member-locked .member-blur {
-  filter: blur(7px);
+.member-blur { transition: filter .3s ease; }
+/* 未登入：只模糊「數據本身」（號碼球 / 數字 / 圖表 / 表格內容 / 熱力圖），
+   卡片標題、欄位標籤、區塊排版維持清晰，讓訪客看得到每個板位是做什麼用的 */
+.member-locked .member-blur .ball,
+.member-locked .member-blur .ball-skeleton,
+.member-locked .member-blur .ball-separator,
+.member-locked .member-blur .mini-ball,
+.member-locked .member-blur .mini-ball-sep,
+.member-locked .member-blur .kpi-value,
+.member-locked .member-blur .num-pill,
+.member-locked .member-blur .hm-cell,
+.member-locked .member-blur .confidence-badge,
+.member-locked .member-blur .conf-val,
+.member-locked .member-blur .conf-bar,
+.member-locked .member-blur .draw-sum,
+.member-locked .member-blur #latestMeta,
+.member-locked .member-blur .detail-num,
+.member-locked .member-blur .detail-row span,
+.member-locked .member-blur .detail-score,
+.member-locked .member-blur .chart-wrap,
+.member-locked .member-blur .heatmap,
+.member-locked .member-blur .multi-balls,
+.member-locked .member-blur tbody {
+  filter: blur(6px);
   user-select: none;
   pointer-events: none;
 }
